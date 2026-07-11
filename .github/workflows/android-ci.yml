@@ -33,7 +33,7 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build, test, and lint
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --stacktrace
+        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain --quiet --stacktrace
 
       - name: Upload debug APK
         if: success()
