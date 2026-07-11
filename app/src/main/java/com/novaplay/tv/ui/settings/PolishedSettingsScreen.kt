@@ -108,29 +108,23 @@ fun PolishedSettingsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                item {
-                    InterfacePanel(
-                        uiMode = uiMode,
-                        firstFocus = firstFocus,
-                        onSelect = viewModel::setUiMode,
-                    )
-                }
+                item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
                 item { PlaybackPanel(liveFormat, viewModel::setLiveFormat) }
                 item {
                     MaintenancePanel(
-                        syncStatus = syncStatus,
-                        cacheCleared = cacheCleared,
-                        onSync = viewModel::resyncNow,
-                        onClearCache = viewModel::clearImageCache,
+                        syncStatus,
+                        cacheCleared,
+                        viewModel::resyncNow,
+                        viewModel::clearImageCache,
                     )
                 }
                 item {
                     SubtitlePanel(
-                        style = subtitleStyle,
-                        onSize = viewModel::setSubtitleSize,
-                        onColor = viewModel::setSubtitleColor,
-                        onBackground = viewModel::setSubtitleBackground,
-                        onEdge = viewModel::setSubtitleEdge,
+                        subtitleStyle,
+                        viewModel::setSubtitleSize,
+                        viewModel::setSubtitleColor,
+                        viewModel::setSubtitleBackground,
+                        viewModel::setSubtitleEdge,
                     )
                 }
                 item { DevicePanel(deviceInfo) }
@@ -144,20 +138,14 @@ fun PolishedSettingsScreen(
                         .weight(1f)
                         .fillMaxHeight(),
                 ) {
-                    item {
-                        InterfacePanel(
-                            uiMode = uiMode,
-                            firstFocus = firstFocus,
-                            onSelect = viewModel::setUiMode,
-                        )
-                    }
+                    item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
                     item { PlaybackPanel(liveFormat, viewModel::setLiveFormat) }
                     item {
                         MaintenancePanel(
-                            syncStatus = syncStatus,
-                            cacheCleared = cacheCleared,
-                            onSync = viewModel::resyncNow,
-                            onClearCache = viewModel::clearImageCache,
+                            syncStatus,
+                            cacheCleared,
+                            viewModel::resyncNow,
+                            viewModel::clearImageCache,
                         )
                     }
                     item { DevicePanel(deviceInfo) }
@@ -174,11 +162,11 @@ fun PolishedSettingsScreen(
                 ) {
                     item {
                         SubtitlePanel(
-                            style = subtitleStyle,
-                            onSize = viewModel::setSubtitleSize,
-                            onColor = viewModel::setSubtitleColor,
-                            onBackground = viewModel::setSubtitleBackground,
-                            onEdge = viewModel::setSubtitleEdge,
+                            subtitleStyle,
+                            viewModel::setSubtitleSize,
+                            viewModel::setSubtitleColor,
+                            viewModel::setSubtitleBackground,
+                            viewModel::setSubtitleEdge,
                         )
                     }
                 }
@@ -190,7 +178,7 @@ fun PolishedSettingsScreen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InterfacePanel(
-    uiMode: UiModePreference,
+    mode: UiModePreference,
     firstFocus: FocusRequester,
     onSelect: (UiModePreference) -> Unit,
 ) {
@@ -201,12 +189,12 @@ private fun InterfacePanel(
         ChoiceGroup(
             label = "Interface mode",
             options = UiModePreference.entries.map { it.label },
-            selectedIndex = uiMode.ordinal,
+            selectedIndex = mode.ordinal,
             onSelect = { onSelect(UiModePreference.entries[it]) },
             firstFocus = firstFocus,
         )
         Text(
-            text = when (uiMode) {
+            text = when (mode) {
                 UiModePreference.AUTO -> "Using automatic device and window detection"
                 UiModePreference.TOUCH -> "Touch navigation is forced on this device"
                 UiModePreference.TV -> "Remote-first TV navigation is forced on this device"
@@ -220,7 +208,7 @@ private fun InterfacePanel(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaybackPanel(
-    liveFormat: LiveFormat,
+    format: LiveFormat,
     onSelect: (LiveFormat) -> Unit,
 ) {
     SettingsPanel(
@@ -230,7 +218,7 @@ private fun PlaybackPanel(
         ChoiceGroup(
             label = "Preferred stream format",
             options = LiveFormat.entries.map { it.label },
-            selectedIndex = liveFormat.ordinal,
+            selectedIndex = format.ordinal,
             onSelect = { onSelect(LiveFormat.entries[it]) },
         )
     }
@@ -238,7 +226,7 @@ private fun PlaybackPanel(
 
 @Composable
 private fun MaintenancePanel(
-    syncStatus: SyncStatus,
+    status: SyncStatus,
     cacheCleared: Boolean,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
@@ -248,17 +236,17 @@ private fun MaintenancePanel(
         description = "Refresh the active catalogue or clear downloaded artwork without deleting playlists.",
     ) {
         NovaButton(
-            text = when (syncStatus) {
-                is SyncStatus.Syncing -> "Syncing ${syncStatus.step}…"
+            text = when (status) {
+                is SyncStatus.Syncing -> "Syncing ${status.step}…"
                 else -> "Re-sync active playlist"
             },
             onClick = onSync,
-            prominent = syncStatus !is SyncStatus.Syncing,
+            prominent = status !is SyncStatus.Syncing,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (syncStatus is SyncStatus.Failed) {
+        if (status is SyncStatus.Failed) {
             Text(
-                text = syncStatus.message,
+                text = status.message,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
@@ -341,8 +329,15 @@ private fun SettingsPanel(
                 shape = MaterialTheme.shapes.medium,
             )
             .padding(18.dp),
-        content = content,
-    )
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleLarge)
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        content()
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
