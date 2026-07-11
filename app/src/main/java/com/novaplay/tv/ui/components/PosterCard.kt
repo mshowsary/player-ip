@@ -1,6 +1,7 @@
 package com.novaplay.tv.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -20,12 +21,14 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.novaplay.tv.ui.theme.isTvDevice
 
 // 2:3 poster card with a bottom scrim for the title. Image decodes at cell
 // size (Coil sizes from the layout), never full resolution. Bookmarking:
@@ -48,7 +51,7 @@ fun PosterCard(
     ) {
         AsyncImage(
             model = posterUrl,
-            contentDescription = null,
+            contentDescription = title,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
@@ -74,37 +77,72 @@ fun PosterCard(
                 Text(
                     text = it,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = Color.White.copy(alpha = 0.75f),
                     modifier = Modifier.padding(top = 26.dp),
                 )
             }
         }
         onToggleBookmark?.let { toggle ->
-            Box(
+            PosterBookmarkButton(
+                bookmarked = bookmarked,
+                onToggle = toggle,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(6.dp)
-                    .size(30.dp)
-                    .clip(CircleShape)
-                    .background(Color.Black.copy(alpha = 0.55f))
-                    .pointerInput(Unit) { detectTapGestures { toggle() } },
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                    contentDescription = if (bookmarked) "Remove bookmark" else "Add bookmark",
-                    tint = if (bookmarked) MaterialTheme.colorScheme.primary else Color.White,
-                    modifier = Modifier.size(17.dp),
-                )
-            }
+                    .padding(4.dp),
+            )
         }
     }
 }
 
 @Composable
-fun PosterGridSkeleton(columns: Int = 5) {
+private fun PosterBookmarkButton(
+    bookmarked: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isTv = isTvDevice()
+    val interactionModifier = if (isTv) {
+        // Keep the corner badge out of the TV focus chain; long-pressing the
+        // poster remains the primary remote interaction.
+        Modifier.pointerInput(Unit) { detectTapGestures { onToggle() } }
+    } else {
+        Modifier.clickable(
+            role = Role.Button,
+            onClickLabel = if (bookmarked) "Remove bookmark" else "Add bookmark",
+            onClick = onToggle,
+        )
+    }
+
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .then(interactionModifier),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(Color.Black.copy(alpha = 0.64f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+                contentDescription = if (bookmarked) "Remove bookmark" else "Add bookmark",
+                tint = if (bookmarked) MaterialTheme.colorScheme.primary else Color.White,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+@Composable
+fun PosterGridSkeleton(
+    columns: Int = 5,
+    spacingDp: Int = 14,
+) {
     androidx.compose.foundation.layout.Row(
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(14.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(spacingDp.dp),
     ) {
         repeat(columns) {
             ShimmerBox(
