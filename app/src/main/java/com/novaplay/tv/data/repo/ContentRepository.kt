@@ -87,11 +87,11 @@ class ContentRepository @Inject constructor(
         val playlist = db.playlistDao().getById(channel.playlistId) ?: return emptyList()
         return when (format) {
             LiveFormat.AUTO -> listOf(
-                XtreamClient.liveUrl(playlist, channel.streamId, "m3u8"),
-                XtreamClient.liveUrl(playlist, channel.streamId, "ts"),
+                xtream.liveUrl(playlist, channel.streamId, "m3u8"),
+                xtream.liveUrl(playlist, channel.streamId, "ts"),
             )
-            LiveFormat.HLS -> listOf(XtreamClient.liveUrl(playlist, channel.streamId, "m3u8"))
-            LiveFormat.TS -> listOf(XtreamClient.liveUrl(playlist, channel.streamId, "ts"))
+            LiveFormat.HLS -> listOf(xtream.liveUrl(playlist, channel.streamId, "m3u8"))
+            LiveFormat.TS -> listOf(xtream.liveUrl(playlist, channel.streamId, "ts"))
         }
     }
 
@@ -133,7 +133,7 @@ class ContentRepository @Inject constructor(
 
     suspend fun movieStreamUrl(movie: Movie): String? {
         val playlist = db.playlistDao().getById(movie.playlistId) ?: return null
-        return XtreamClient.movieUrl(playlist, movie.streamId, movie.containerExtension)
+        return xtream.movieUrl(playlist, movie.streamId, movie.containerExtension)
     }
 
     // ---- Series ----
@@ -198,7 +198,7 @@ class ContentRepository @Inject constructor(
 
     suspend fun episodeStreamUrl(episode: Episode): String? {
         val playlist = db.playlistDao().getById(episode.playlistId) ?: return null
-        return XtreamClient.episodeUrl(playlist, episode.remoteEpisodeId, episode.containerExtension)
+        return xtream.episodeUrl(playlist, episode.remoteEpisodeId, episode.containerExtension)
     }
 
     // ---- Bookmarks & recents ----

@@ -1,5 +1,6 @@
 package com.novaplay.tv.data.repo
 
+import androidx.room.withTransaction
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.core.DeviceIdentity
 import com.novaplay.tv.data.db.NovaDatabase
@@ -7,7 +8,7 @@ import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.remote.MockPortal
 import com.novaplay.tv.data.remote.PortalApi
 import com.novaplay.tv.data.remote.PortalPlaylistDto
-import androidx.room.withTransaction
+import com.novaplay.tv.data.security.PlaylistSecrets
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -23,6 +24,7 @@ class ActivationRepository @Inject constructor(
     private val portalApi: PortalApi,
     private val deviceIdentity: DeviceIdentity,
     private val db: NovaDatabase,
+    private val playlistSecrets: PlaylistSecrets,
 ) {
     suspend fun hasPlaylists(): Boolean = db.playlistDao().count() > 0
 
@@ -62,30 +64,28 @@ class ActivationRepository @Inject constructor(
         db.withTransaction {
             for (dto in dtos) {
                 val existing = dao.getByPortalId(dto.id)
-                if (existing == null) {
-                    dao.insert(
-                        Playlist(
-                            portalId = dto.id,
-                            name = dto.name,
-                            type = dto.type,
-                            server = dto.server,
-                            username = dto.username,
-                            password = dto.password,
-                            url = dto.url,
-                        ),
+                val plaintext = if (existing == null) {
+                    Playlist(
+                        portalId = dto.id,
+                        name = dto.name,
+                        type = dto.type,
+                        server = dto.server,
+                        username = dto.username,
+                        password = dto.password,
+                        url = dto.url,
                     )
                 } else {
-                    dao.update(
-                        existing.copy(
-                            name = dto.name,
-                            type = dto.type,
-                            server = dto.server,
-                            username = dto.username,
-                            password = dto.password,
-                            url = dto.url,
-                        ),
+                    existing.copy(
+                        name = dto.name,
+                        type = dto.type,
+                        server = dto.server,
+                        username = dto.username,
+                        password = dto.password,
+                        url = dto.url,
                     )
                 }
+                val sealed = playlistSecrets.seal(plaintext)
+                if (existing == null) dao.insert(sealed) else dao.update(sealed)
             }
             if (dao.getActive() == null) {
                 dao.getByPortalId(dtos.first().id)?.let { dao.setActive(it.id) }

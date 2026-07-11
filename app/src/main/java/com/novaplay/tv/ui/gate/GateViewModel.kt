@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.repo.SyncRepository
+import com.novaplay.tv.data.security.PlaylistSecrets
 import com.novaplay.tv.di.ApplicationScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -25,6 +26,7 @@ sealed interface GateState {
 class GateViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val syncRepository: SyncRepository,
+    private val playlistSecrets: PlaylistSecrets,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -33,6 +35,10 @@ class GateViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // Safe one-time upgrade: plaintext credentials from earlier builds
+            // are sealed with the Android Keystore before the app proceeds.
+            playlistSecrets.migrateStoredPlaylists()
+
             val playlist = contentRepository.getActivePlaylist()
             if (playlist == null) {
                 _state.value = GateState.NeedsActivation
