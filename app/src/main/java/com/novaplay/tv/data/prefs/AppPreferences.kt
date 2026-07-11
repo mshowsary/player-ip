@@ -12,6 +12,12 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class UiModePreference(val label: String) {
+    AUTO("Auto"),
+    TOUCH("Touch"),
+    TV("TV / remote"),
+}
+
 enum class LiveFormat(val label: String) {
     AUTO("Auto (HLS → TS fallback)"),
     HLS("HLS"),
@@ -60,6 +66,7 @@ class AppPreferences @Inject constructor(
     private object Keys {
         val DEVICE_MAC = stringPreferencesKey("device_mac")
         val DEVICE_KEY = stringPreferencesKey("device_key")
+        val UI_MODE = stringPreferencesKey("ui_mode")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
         val SUB_SIZE = stringPreferencesKey("sub_size")
         val SUB_COLOR = stringPreferencesKey("sub_color")
@@ -80,6 +87,14 @@ class AppPreferences @Inject constructor(
 
     suspend fun setDeviceKey(key: String) {
         context.dataStore.edit { it[Keys.DEVICE_KEY] = key }
+    }
+
+    val uiMode: Flow<UiModePreference> = context.dataStore.data
+        .map { it[Keys.UI_MODE].toEnum(UiModePreference.AUTO) }
+        .distinctUntilChanged()
+
+    suspend fun setUiMode(mode: UiModePreference) {
+        context.dataStore.edit { it[Keys.UI_MODE] = mode.name }
     }
 
     val liveFormat: Flow<LiveFormat> = context.dataStore.data
