@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -48,6 +49,8 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.R
+import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.PulsingDot
@@ -67,6 +70,7 @@ private data class HomeCard(
     val label: String,
     val icon: ImageVector,
     val onClick: () -> Unit,
+    val managedFeature: ManagedFeature? = null,
 )
 
 @Composable
@@ -80,21 +84,32 @@ fun HomeScreen(
 ) {
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
-    val liveFocus = remember { FocusRequester() }
+    val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
+    val firstCardFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
     val layoutInfo = appLayoutInfo()
 
-    val cards = remember(onOpenLive, onOpenMovies, onOpenSeries, onOpenPlaylists, onOpenSettings) {
+    val cards = remember(
+        managedAccess,
+        onOpenLive,
+        onOpenMovies,
+        onOpenSeries,
+        onOpenPlaylists,
+        onOpenSettings,
+    ) {
         listOf(
-            HomeCard("Live TV", Icons.Default.LiveTv, onOpenLive),
-            HomeCard("Movies", Icons.Default.Movie, onOpenMovies),
-            HomeCard("Series", Icons.Default.VideoLibrary, onOpenSeries),
+            HomeCard("Live TV", Icons.Default.LiveTv, onOpenLive, ManagedFeature.LIVE),
+            HomeCard("Movies", Icons.Default.Movie, onOpenMovies, ManagedFeature.MOVIES),
+            HomeCard("Series", Icons.Default.VideoLibrary, onOpenSeries, ManagedFeature.SERIES),
             HomeCard("Playlists", Icons.Default.SwapHoriz, onOpenPlaylists),
             HomeCard("Settings", Icons.Default.Settings, onOpenSettings),
-        )
+        ).filter { card -> card.managedFeature?.let(managedAccess::allows) ?: true }
     }
 
-    LaunchedEffect(isTv) { if (isTv) liveFocus.requestFocus() }
+    val firstCardLabel = cards.firstOrNull()?.label
+    LaunchedEffect(isTv, firstCardLabel) {
+        if (isTv && firstCardLabel != null) runCatching { firstCardFocus.requestFocus() }
+    }
 
     Column(
         modifier = Modifier
@@ -151,6 +166,11 @@ fun HomeScreen(
             }
         }
 
+        if (managedAccess.shouldShowHomeNotice()) {
+            Spacer(Modifier.height(14.dp))
+            ManagedAccessNotice(managedAccess)
+        }
+
         val minimumCardWidth = when (layoutInfo.widthClass) {
             WindowWidthClass.COMPACT -> 132.dp
             WindowWidthClass.MEDIUM -> 148.dp
@@ -173,7 +193,11 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .aspectRatio(0.94f)
                         .then(
-                            if (card.label == "Live TV") Modifier.focusRequester(liveFocus) else Modifier,
+                            if (card.label == firstCardLabel) {
+                                Modifier.focusRequester(firstCardFocus)
+                            } else {
+                                Modifier
+                            },
                         ),
                 )
             }
@@ -201,6 +225,70 @@ fun HomeScreen(
                 SyncStatus.Idle -> Unit
             }
         }
+    }
+}
+
+private fun ManagedAccessPolicy.shouldShowHomeNotice(): Boolean =
+    isManaged && (isBlocked || !allowLive || !allowMovies || !allowSeries)
+
+@Composable
+private fun ManagedAccessNotice(policy: ManagedAccessPolicy) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium)
+            .border(
+                1.dp,
+                if (policy.isBlocked) {
+                    MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                } else {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+                },
+                MaterialTheme.shapes.medium,
+            )
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Default.Lock,
+            contentDescription = null,
+            tint = if (policy.isBlocked) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp),
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = policy.statusLabel(),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                text = policy.message ?: managedServicesSummary(policy),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        policy.supportCode?.let { code ->
+            Text(
+                text = code,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+private fun managedServicesSummary(policy: ManagedAccessPolicy): String {
+    val available = buildList {
+        if (policy.allowLive) add("Live")
+        if (policy.allowMovies) add("Movies")
+        if (policy.allowSeries) add("Series")
+    }
+    return if (available.isEmpty()) {
+        "No managed streaming services are currently available."
+    } else {
+        "Available services: ${available.joinToString()}"
     }
 }
 
