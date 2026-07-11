@@ -13,6 +13,7 @@ import com.novaplay.tv.data.prefs.SubtitleColor
 import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleSize
 import com.novaplay.tv.data.prefs.SubtitleStyle
+import com.novaplay.tv.data.prefs.UiModePreference
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
@@ -47,6 +48,9 @@ class SettingsViewModel @Inject constructor(
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
+    val uiMode: StateFlow<UiModePreference> = prefs.uiMode
+        .stateIn(viewModelScope, SharingStarted.Eagerly, UiModePreference.AUTO)
+
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
 
@@ -66,6 +70,10 @@ class SettingsViewModel @Inject constructor(
             val identity = deviceIdentity.get()
             _deviceInfo.value = DeviceInfo(mac = identity.mac, deviceKey = identity.deviceKey)
         }
+    }
+
+    fun setUiMode(mode: UiModePreference) {
+        viewModelScope.launch { prefs.setUiMode(mode) }
     }
 
     fun setSubtitleSize(size: SubtitleSize) = updateStyle { it.copy(size = size) }

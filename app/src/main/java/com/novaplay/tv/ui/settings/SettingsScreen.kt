@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -37,7 +38,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -49,6 +49,7 @@ import com.novaplay.tv.data.prefs.SubtitleColor
 import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleSize
 import com.novaplay.tv.data.prefs.SubtitleStyle
+import com.novaplay.tv.data.prefs.UiModePreference
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
@@ -62,6 +63,7 @@ import com.novaplay.tv.ui.theme.screenPadding
 fun SettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
+    val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val liveFormat by viewModel.liveFormat.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
@@ -70,10 +72,9 @@ fun SettingsScreen(
     val firstFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
 
-    LaunchedEffect(Unit) { if (isTv) firstFocus.requestFocus() }
+    LaunchedEffect(isTv) { if (isTv) firstFocus.requestFocus() }
 
     if (isCompactWidth()) {
-        // Portrait phones: both sections in one scrolling column.
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(18.dp),
             modifier = Modifier
@@ -82,7 +83,7 @@ fun SettingsScreen(
         ) {
             subtitleSection(subtitleStyle, firstFocus, viewModel)
             item { Spacer(Modifier.height(10.dp)) }
-            generalSection(liveFormat, syncStatus, deviceInfo, cacheCleared, viewModel)
+            generalSection(uiMode, liveFormat, syncStatus, deviceInfo, cacheCleared, viewModel)
         }
     } else {
         Row(
@@ -90,7 +91,6 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(screenPadding()),
         ) {
-            // ---- Subtitle appearance: the star of settings ----
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier
@@ -102,14 +102,13 @@ fun SettingsScreen(
 
             Spacer(Modifier.width(48.dp))
 
-            // ---- General ----
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(18.dp),
                 modifier = Modifier
                     .weight(1f)
                     .focusRestorer(),
             ) {
-                generalSection(liveFormat, syncStatus, deviceInfo, cacheCleared, viewModel)
+                generalSection(uiMode, liveFormat, syncStatus, deviceInfo, cacheCleared, viewModel)
             }
         }
     }
@@ -164,6 +163,7 @@ private fun LazyListScope.subtitleSection(
 }
 
 private fun LazyListScope.generalSection(
+    uiMode: UiModePreference,
     liveFormat: LiveFormat,
     syncStatus: SyncStatus,
     deviceInfo: DeviceInfo,
@@ -174,6 +174,20 @@ private fun LazyListScope.generalSection(
         Text(
             text = "General",
             style = MaterialTheme.typography.headlineMedium,
+        )
+    }
+    item {
+        ChoiceRow(
+            label = "Interface mode",
+            options = UiModePreference.entries.map { it.label },
+            selectedIndex = uiMode.ordinal,
+            onSelect = { viewModel.setUiMode(UiModePreference.entries[it]) },
+        )
+        Text(
+            text = "Auto detects phones, tablets, Android TV, Fire TV, and TV boxes. Use TV / remote when a box is detected incorrectly.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
         )
     }
     item {
@@ -233,8 +247,6 @@ private fun LazyListScope.generalSection(
     }
 }
 
-// Live preview: renders "Sample subtitle text" exactly per the selected style,
-// on a mock video frame. Updates instantly as options change below it.
 @Composable
 private fun SubtitlePreview(style: SubtitleStyle) {
     Box(
@@ -250,8 +262,6 @@ private fun SubtitlePreview(style: SubtitleStyle) {
         contentAlignment = Alignment.BottomCenter,
     ) {
         val textSize = with(LocalDensity.current) {
-            // SubtitleView sizes text as a fraction of view height; mirror that
-            // against a nominal 720 px frame so relative sizes feel right.
             (style.size.fraction * 720f * 0.8f).toSp()
         }
         val baseStyle = TextStyle(
@@ -305,7 +315,7 @@ private fun ChoiceRow(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
         )
-        val chips: @Composable (Boolean) -> Unit = { _ ->
+        val chips: @Composable () -> Unit = {
             options.forEachIndexed { index, option ->
                 ChoiceChip(
                     text = option,
@@ -320,13 +330,12 @@ private fun ChoiceRow(
             }
         }
         if (vertical) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { chips(true) }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) { chips() }
         } else {
-            // Wraps instead of clipping on narrow phone screens.
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) { chips(false) }
+            ) { chips() }
         }
     }
 }
@@ -340,7 +349,6 @@ private fun ChoiceChip(
 ) {
     NovaClickable(
         onClick = onClick,
-        // Selected chips wear the signature gradient ring.
         modifier = modifier.then(
             if (selected) {
                 Modifier.border(1.dp, NovaAccentGradient, RoundedCornerShape(50))

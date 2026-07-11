@@ -33,7 +33,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build, test, and lint
-        run: ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain --quiet --stacktrace 2>&1 | tee build.log
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build-log
+          path: build.log
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload debug APK
         if: success()
