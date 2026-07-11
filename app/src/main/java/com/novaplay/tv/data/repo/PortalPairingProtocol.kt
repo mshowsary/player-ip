@@ -2,6 +2,7 @@ package com.novaplay.tv.data.repo
 
 import com.novaplay.tv.data.remote.PairingStatusDto
 import com.novaplay.tv.data.remote.PortalPlaylistDto
+import com.novaplay.tv.data.remote.PortalPolicyDto
 import com.novaplay.tv.data.security.PortalTokens
 
 data class PortalPairingSession(
@@ -18,6 +19,7 @@ sealed interface PortalPairingPoll {
     data class Approved(
         val tokens: PortalTokens,
         val playlists: List<PortalPlaylistDto>,
+        val policy: PortalPolicyDto?,
     ) : PortalPairingPoll
     data object Denied : PortalPairingPoll
     data object Expired : PortalPairingPoll
@@ -66,6 +68,7 @@ object PortalPairingProtocol {
                         accessTokenExpiresAtEpochSec = nowEpochSec + expiresIn,
                     ),
                     playlists = dto.playlists,
+                    policy = dto.policy,
                 )
             }
             else -> PortalPairingPoll.Failure("Unknown portal pairing status")
