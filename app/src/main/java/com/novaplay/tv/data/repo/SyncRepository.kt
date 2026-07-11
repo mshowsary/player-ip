@@ -1,8 +1,10 @@
 package com.novaplay.tv.data.repo
 
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import androidx.room.withTransaction
+import androidx.sqlite.db.SimpleSQLiteQuery
 import com.novaplay.tv.core.SafeErrorMessage
 import com.novaplay.tv.core.StableContentId
 import com.novaplay.tv.data.db.LiveCategory
@@ -14,6 +16,8 @@ import com.novaplay.tv.data.db.Series
 import com.novaplay.tv.data.db.SeriesCategory
 import com.novaplay.tv.data.db.VodCategory
 import com.novaplay.tv.data.m3u.M3uParser
+import com.novaplay.tv.data.prefs.AppPreferences
+import com.novaplay.tv.data.prefs.LastSyncSummary
 import com.novaplay.tv.data.remote.XtreamCategoryDto
 import com.novaplay.tv.data.remote.XtreamClient
 import com.novaplay.tv.data.security.PlaylistSecrets
@@ -35,6 +39,18 @@ sealed interface SyncStatus {
     data class Failed(val message: String) : SyncStatus
 }
 
+enum class SyncTrigger(val label: String) {
+    FOREGROUND("Manual"),
+    STARTUP("Startup"),
+    BACKGROUND("Background"),
+}
+
+private data class CatalogCounts(
+    val live: Int,
+    val movies: Int,
+    val series: Int,
+)
+
 @Singleton
 class SyncRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -42,6 +58,7 @@ class SyncRepository @Inject constructor(
     private val xtream: XtreamClient,
     private val m3uParser: M3uParser,
     private val playlistSecrets: PlaylistSecrets,
+    private val preferences: AppPreferences,
 ) {
     private val _status = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
@@ -50,32 +67,60 @@ class SyncRepository @Inject constructor(
 
     suspend fun syncIfStale(playlist: Playlist, maxAgeMs: Long = STALE_AFTER_MS) {
         if (System.currentTimeMillis() - playlist.lastSyncEpochMs > maxAgeMs) {
-            sync(playlist)
+            sync(playlist, SyncTrigger.STARTUP)
         }
     }
 
-    suspend fun sync(playlist: Playlist): Result<Unit> = syncMutex.withLock {
-        val result = runCatching {
+    suspend fun sync(
+        playlist: Playlist,
+        trigger: SyncTrigger = SyncTrigger.FOREGROUND,
+    ): Result<Unit> = syncMutex.withLock {
+        val startedAt = SystemClock.elapsedRealtime()
+        try {
             when (playlist.type) {
                 Playlist.TYPE_XTREAM -> syncXtream(playlist)
                 Playlist.TYPE_M3U -> syncM3u(playlist)
                 else -> error("Unknown playlist type: ${playlist.type}")
             }
-            optimizeFts()
-            db.playlistDao().updateLastSync(playlist.id, System.currentTimeMillis())
+            optimizeDatabase()
+            val completedAt = System.currentTimeMillis()
+            db.playlistDao().updateLastSync(playlist.id, completedAt)
+            val counts = catalogCounts(playlist.id)
+            preferences.recordSyncSummary(
+                LastSyncSummary(
+                    completedAtEpochMs = completedAt,
+                    durationMs = SystemClock.elapsedRealtime() - startedAt,
+                    successful = true,
+                    trigger = trigger.label,
+                    playlistType = playlist.type,
+                    liveChannels = counts.live,
+                    movies = counts.movies,
+                    series = counts.series,
+                ),
+            )
             _status.value = SyncStatus.Idle
+            Result.success(Unit)
+        } catch (error: Throwable) {
+            val message = SafeErrorMessage.from(error, "Synchronization failed")
+            // Do not attach the throwable: provider URLs can contain credentials.
+            Log.w(TAG, "Sync failed for playlist ${playlist.id}: ${error::class.java.simpleName}: $message")
+            val counts = runCatching { catalogCounts(playlist.id) }.getOrDefault(CatalogCounts(0, 0, 0))
+            preferences.recordSyncSummary(
+                LastSyncSummary(
+                    completedAtEpochMs = System.currentTimeMillis(),
+                    durationMs = SystemClock.elapsedRealtime() - startedAt,
+                    successful = false,
+                    trigger = trigger.label,
+                    playlistType = playlist.type,
+                    liveChannels = counts.live,
+                    movies = counts.movies,
+                    series = counts.series,
+                    error = message,
+                ),
+            )
+            _status.value = SyncStatus.Failed(message)
+            Result.failure(IllegalStateException(message))
         }
-
-        result.fold(
-            onSuccess = { Result.success(Unit) },
-            onFailure = { error ->
-                val message = SafeErrorMessage.from(error, "Synchronization failed")
-                // Do not attach the throwable: provider URLs can contain credentials.
-                Log.w(TAG, "Sync failed for playlist ${playlist.id}: ${error::class.java.simpleName}: $message")
-                _status.value = SyncStatus.Failed(message)
-                Result.failure(IllegalStateException(message))
-            },
-        )
     }
 
     private suspend fun syncXtream(playlist: Playlist) {
@@ -310,12 +355,33 @@ class SyncRepository @Inject constructor(
         return File.createTempFile("$prefix-", suffix, directory)
     }
 
-    // FTS4 external-content maintenance: fold the incremental index segments
-    // produced by a full re-sync back into one for fast MATCH queries.
-    private suspend fun optimizeFts() = withContext(Dispatchers.IO) {
+    // FTS compaction and SQLite maintenance are local-only and run after a
+    // successful replacement. PASSIVE checkpointing keeps the WAL bounded
+    // without blocking readers that are currently browsing the old/new data.
+    private suspend fun optimizeDatabase() = withContext(Dispatchers.IO) {
         val sqlDb = db.openHelper.writableDatabase
         for (table in listOf("live_channel_fts", "movie_fts", "series_fts")) {
             sqlDb.execSQL("INSERT INTO $table($table) VALUES('optimize')")
+        }
+        sqlDb.query("PRAGMA optimize").close()
+        sqlDb.query("PRAGMA wal_checkpoint(PASSIVE)").close()
+    }
+
+    private suspend fun catalogCounts(playlistId: Long): CatalogCounts = withContext(Dispatchers.IO) {
+        CatalogCounts(
+            live = count("live_channels", playlistId),
+            movies = count("movies", playlistId),
+            series = count("series", playlistId),
+        )
+    }
+
+    private fun count(table: String, playlistId: Long): Int {
+        val query = SimpleSQLiteQuery(
+            "SELECT COUNT(*) FROM $table WHERE playlistId = ?",
+            arrayOf(playlistId),
+        )
+        return db.openHelper.readableDatabase.query(query).use { cursor ->
+            if (cursor.moveToFirst()) cursor.getInt(0) else 0
         }
     }
 
