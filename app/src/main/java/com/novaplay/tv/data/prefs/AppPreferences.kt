@@ -1,6 +1,7 @@
 package com.novaplay.tv.data.prefs
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -57,6 +58,15 @@ data class SubtitleStyle(
     val edge: SubtitleEdge = SubtitleEdge.OUTLINE,
 )
 
+/** Last explicit VOD track choices, reused when another title offers a match. */
+data class PlaybackTrackPreferences(
+    val audioLanguage: String? = null,
+    val audioLabel: String? = null,
+    val subtitlesEnabled: Boolean = true,
+    val subtitleLanguage: String? = null,
+    val subtitleLabel: String? = null,
+)
+
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
 @Singleton
@@ -73,6 +83,11 @@ class AppPreferences @Inject constructor(
         val SUB_COLOR = stringPreferencesKey("sub_color")
         val SUB_BACKGROUND = stringPreferencesKey("sub_background")
         val SUB_EDGE = stringPreferencesKey("sub_edge")
+        val VOD_AUDIO_LANGUAGE = stringPreferencesKey("vod_audio_language")
+        val VOD_AUDIO_LABEL = stringPreferencesKey("vod_audio_label")
+        val VOD_SUBTITLES_ENABLED = booleanPreferencesKey("vod_subtitles_enabled")
+        val VOD_SUBTITLE_LANGUAGE = stringPreferencesKey("vod_subtitle_language")
+        val VOD_SUBTITLE_LABEL = stringPreferencesKey("vod_subtitle_label")
     }
 
     private inline fun <reified T : Enum<T>> String?.toEnum(default: T): T =
@@ -130,5 +145,40 @@ class AppPreferences @Inject constructor(
             it[Keys.SUB_BACKGROUND] = style.background.name
             it[Keys.SUB_EDGE] = style.edge.name
         }
+    }
+
+    val playbackTrackPreferences: Flow<PlaybackTrackPreferences> = context.dataStore.data
+        .map { prefs ->
+            PlaybackTrackPreferences(
+                audioLanguage = prefs[Keys.VOD_AUDIO_LANGUAGE],
+                audioLabel = prefs[Keys.VOD_AUDIO_LABEL],
+                subtitlesEnabled = prefs[Keys.VOD_SUBTITLES_ENABLED] ?: true,
+                subtitleLanguage = prefs[Keys.VOD_SUBTITLE_LANGUAGE],
+                subtitleLabel = prefs[Keys.VOD_SUBTITLE_LABEL],
+            )
+        }
+        .distinctUntilChanged()
+
+    suspend fun setAudioTrackPreference(language: String?, label: String?) {
+        context.dataStore.edit { prefs ->
+            language.storeOrRemove(prefs, Keys.VOD_AUDIO_LANGUAGE)
+            label.storeOrRemove(prefs, Keys.VOD_AUDIO_LABEL)
+        }
+    }
+
+    suspend fun setSubtitleTrackPreference(enabled: Boolean, language: String?, label: String?) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.VOD_SUBTITLES_ENABLED] = enabled
+            language.storeOrRemove(prefs, Keys.VOD_SUBTITLE_LANGUAGE)
+            label.storeOrRemove(prefs, Keys.VOD_SUBTITLE_LABEL)
+        }
+    }
+
+    private fun String?.storeOrRemove(
+        prefs: androidx.datastore.preferences.core.MutablePreferences,
+        key: androidx.datastore.preferences.core.Preferences.Key<String>,
+    ) {
+        val clean = this?.trim()?.takeIf { it.isNotEmpty() }
+        if (clean == null) prefs.remove(key) else prefs[key] = clean
     }
 }
