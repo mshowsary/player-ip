@@ -94,6 +94,7 @@ private fun PerformanceSettingsDialog(
                 onClearCache = viewModel::clearImageCache,
                 onRefreshDiagnostics = viewModel::refreshDiagnostics,
                 onCopyDiagnostics = viewModel::copySupportDiagnostics,
+                firstFocusRequester = firstFocus,
             )
         }
     }
