@@ -208,10 +208,14 @@ data class Episode(
     val thumbnailUrl: String? = null,
 )
 
-@Entity(tableName = "watch_progress", primaryKeys = ["mediaType", "mediaId"])
+// Progress is keyed by provider identity, not a local Room row id. Movie and
+// episode rows may be deleted and re-created during synchronization, while this
+// key remains stable and keeps Resume working.
+@Entity(tableName = "watch_progress", primaryKeys = ["playlistId", "mediaType", "remoteId"])
 data class WatchProgress(
+    val playlistId: Long,
     val mediaType: String, // MEDIA_MOVIE | MEDIA_EPISODE
-    val mediaId: Long,     // local row id in movies/episodes
+    val remoteId: Long,   // movie streamId or remoteEpisodeId
     val positionMs: Long,
     val durationMs: Long,
     val updatedAt: Long,
