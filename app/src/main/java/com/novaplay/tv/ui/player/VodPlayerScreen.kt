@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -12,10 +13,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,8 +25,11 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -52,6 +56,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -60,12 +65,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import androidx.compose.foundation.border
 import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.movies.formatPosition
 import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 
 @Composable
@@ -85,18 +90,23 @@ fun VodPlayerScreen(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) viewModel.onLifecycleStop()
+            when (event) {
+                Lifecycle.Event.ON_STOP -> viewModel.onLifecycleStop()
+                Lifecycle.Event.ON_START -> viewModel.onLifecycleStart()
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Hidden controls: the root soaks up D-pad input. LEFT/RIGHT seek straight
-    // away; anything else just recalls the overlay. Touch devices don't move
-    // focus — the overlay is driven by taps instead.
     LaunchedEffect(state.controlsVisible, state.error, dialogOpen) {
         if (!isTv || state.error != null || dialogOpen) return@LaunchedEffect
-        if (state.controlsVisible) playPauseFocus.requestFocus() else rootFocus.requestFocus()
+        if (state.controlsVisible) {
+            runCatching { playPauseFocus.requestFocus() }
+        } else {
+            runCatching { rootFocus.requestFocus() }
+        }
     }
 
     Box(
@@ -107,7 +117,6 @@ fun VodPlayerScreen(
                 if (state.error != null || dialogOpen) return@onPreviewKeyEvent false
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 if (state.controlsVisible) {
-                    // Any key restarts the hide timer; focus tree handles the rest.
                     viewModel.pokeControls()
                     false
                 } else {
@@ -130,7 +139,6 @@ fun VodPlayerScreen(
             }
             .focusRequester(rootFocus)
             .focusable()
-            // Touch: tap the video to summon or dismiss the controls.
             .pointerInput(Unit) {
                 detectTapGestures {
                     if (state.error == null && !showAudioDialog && !showTextDialog) {
@@ -146,11 +154,20 @@ fun VodPlayerScreen(
         )
 
         if (state.buffering && state.error == null) {
-            BufferingIndicator(
-                modifier = Modifier
-                    .size(44.dp)
-                    .align(Alignment.Center),
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                BufferingIndicator(modifier = Modifier.size(44.dp))
+                state.recoveryMessage?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White,
+                    )
+                }
+            }
         }
 
         AnimatedVisibility(
@@ -173,7 +190,7 @@ fun VodPlayerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.75f)),
+                    .background(Color.Black.copy(alpha = 0.82f)),
             ) {
                 ErrorState(message = message, onRetry = viewModel::retry)
             }
@@ -219,23 +236,29 @@ private fun VodControlsOverlay(
     onOpenAudio: () -> Unit,
     onOpenSubtitles: () -> Unit,
 ) {
+    val compact = isCompactWidth()
+    val horizontalPadding = if (compact) 20.dp else 48.dp
+    val verticalPadding = if (compact) 18.dp else 28.dp
+
     Box(modifier = Modifier.fillMaxSize()) {
-        // Top: title.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent),
+                        colors = listOf(Color.Black.copy(alpha = 0.84f), Color.Transparent),
                     ),
                 )
-                .padding(horizontal = 48.dp, vertical = 24.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = state.title,
                     style = MaterialTheme.typography.headlineSmall,
                     color = Color.White,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
                 state.episodeTag?.let { tag ->
                     Spacer(Modifier.width(14.dp))
@@ -249,17 +272,16 @@ private fun VodControlsOverlay(
             }
         }
 
-        // Bottom: seek bar + transport + track buttons.
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .background(
                     Brush.verticalGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)),
+                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f)),
                     ),
                 )
-                .padding(horizontal = 48.dp, vertical = 28.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         ) {
             SeekBar(
                 positionMs = state.positionMs,
@@ -267,34 +289,53 @@ private fun VodControlsOverlay(
                 onSeek = onSeek,
                 onSeekFraction = onSeekFraction,
             )
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(8.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 PlayerIconButton(
-                    icon = if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = if (state.playing) "Pause" else "Play",
+                    icon = when {
+                        state.completed -> Icons.Default.Replay
+                        state.playing -> Icons.Default.Pause
+                        else -> Icons.Default.PlayArrow
+                    },
+                    contentDescription = when {
+                        state.completed -> "Play again"
+                        state.playing -> "Pause"
+                        else -> "Play"
+                    },
                     onClick = onTogglePlay,
                     modifier = Modifier.focusRequester(playPauseFocus),
                 )
-                Spacer(Modifier.width(20.dp))
+                Spacer(Modifier.width(if (compact) 10.dp else 14.dp))
+                PlayerIconButton(
+                    icon = Icons.Default.Replay10,
+                    contentDescription = "Back 10 seconds",
+                    onClick = { onSeek(-1) },
+                )
+                Spacer(Modifier.width(if (compact) 8.dp else 12.dp))
+                PlayerIconButton(
+                    icon = Icons.Default.Forward10,
+                    contentDescription = "Forward 10 seconds",
+                    onClick = { onSeek(+1) },
+                )
+                Spacer(Modifier.width(if (compact) 12.dp else 20.dp))
                 Text(
                     text = "${formatPosition(state.positionMs)}  /  ${formatPosition(state.durationMs)}",
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
                 )
                 Spacer(Modifier.weight(1f))
-                // Audio appears only with a real choice; Subtitles only when
-                // the media embeds text tracks.
                 if (state.audioTracks.size > 1) {
                     PlayerIconButton(
                         icon = Icons.Default.Audiotrack,
                         contentDescription = "Audio",
                         onClick = onOpenAudio,
                     )
-                    Spacer(Modifier.width(14.dp))
+                    Spacer(Modifier.width(if (compact) 8.dp else 14.dp))
                 }
                 if (state.textTracks.isNotEmpty()) {
                     PlayerIconButton(
@@ -318,12 +359,12 @@ private fun PlayerIconButton(
     NovaClickable(
         onClick = onClick,
         modifier = modifier
-            .size(52.dp)
+            .size(50.dp)
             .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape),
         shape = CircleShape,
         containerColor = Color.White.copy(alpha = 0.1f),
         focusedContainerColor = MaterialTheme.colorScheme.primary,
-        focusedScale = 1.1f,
+        focusedScale = 1.08f,
         restingBorder = false,
     ) {
         Icon(
@@ -331,14 +372,11 @@ private fun PlayerIconButton(
             contentDescription = contentDescription,
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(28.dp),
+                .size(27.dp),
         )
     }
 }
 
-// Seek bar for both input worlds: LEFT/RIGHT keys seek relatively
-// (accelerating in the ViewModel) while focused; a tap or horizontal scrub
-// seeks absolutely. The thumb swells while focused or scrubbed.
 @Composable
 private fun SeekBar(
     positionMs: Long,
@@ -347,8 +385,6 @@ private fun SeekBar(
     onSeekFraction: (Float) -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    // Non-null while a finger is dragging: the bar previews the scrub target
-    // and only seeks on release.
     var scrubFraction by remember { mutableStateOf<Float?>(null) }
     val playedFraction = if (durationMs > 0) {
         (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
@@ -361,7 +397,7 @@ private fun SeekBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(28.dp)
+            .height(30.dp)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 when (event.key) {
@@ -408,21 +444,19 @@ private fun SeekBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(if (active) 6.dp else 4.dp)
+                .height(if (active) 7.dp else 4.dp)
                 .clip(CircleShape)
                 .background(Color.White.copy(alpha = 0.25f)),
         )
         Box(
             modifier = Modifier
                 .fillMaxWidth(fraction)
-                .height(if (active) 6.dp else 4.dp)
+                .height(if (active) 7.dp else 4.dp)
                 .clip(CircleShape)
                 .background(NovaAccentGradient),
         )
         Box(
-            modifier = Modifier
-                .padding(start = 0.dp)
-                .fillMaxWidth(fraction),
+            modifier = Modifier.fillMaxWidth(fraction),
             contentAlignment = Alignment.CenterEnd,
         ) {
             Box(
@@ -445,13 +479,18 @@ private fun TrackSelectionDialog(
     onSelect: (TrackOption?) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val firstFocus = remember { FocusRequester() }
+    val selectedFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
-    NovaDialog(title = title, onDismiss = onDismiss) {
-        LaunchedEffect(Unit) { if (isTv) firstFocus.requestFocus() }
+    val selectedIndex = options.indexOfFirst { it.selected }
+    val focusOff = allowOff && offSelected
+
+    NovaDialog(title = title, onDismiss = onDismiss, maxWidth = 500.dp) {
+        LaunchedEffect(Unit) {
+            if (isTv) runCatching { selectedFocus.requestFocus() }
+        }
         LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.fillMaxHeight(0.7f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.heightIn(max = 420.dp),
         ) {
             if (allowOff) {
                 item(key = "off") {
@@ -459,18 +498,26 @@ private fun TrackSelectionDialog(
                         label = "Off",
                         selected = offSelected,
                         onClick = { onSelect(null) },
-                        modifier = Modifier.focusRequester(firstFocus),
+                        modifier = if (focusOff || selectedIndex < 0) {
+                            Modifier.focusRequester(selectedFocus)
+                        } else {
+                            Modifier
+                        },
                     )
                 }
             }
-            items(count = options.size, key = { "$it" }) { index ->
+            items(count = options.size, key = { index ->
+                "${options[index].groupIndex}:${options[index].trackIndex}"
+            }) { index ->
                 val option = options[index]
                 TrackRow(
                     label = option.label,
                     selected = option.selected && (!allowOff || !offSelected),
                     onClick = { onSelect(option) },
-                    modifier = if (!allowOff && index == 0) {
-                        Modifier.focusRequester(firstFocus)
+                    modifier = if (!focusOff && index == selectedIndex) {
+                        Modifier.focusRequester(selectedFocus)
+                    } else if (!allowOff && selectedIndex < 0 && index == 0) {
+                        Modifier.focusRequester(selectedFocus)
                     } else {
                         Modifier
                     },
@@ -491,8 +538,8 @@ private fun TrackRow(
         onClick = onClick,
         modifier = modifier
             .fillMaxWidth()
-            .height(52.dp),
-        focusedScale = 1.02f,
+            .height(54.dp),
+        focusedScale = 1.015f,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -503,6 +550,8 @@ private fun TrackRow(
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
             if (selected) {
