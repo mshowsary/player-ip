@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -41,8 +42,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -50,10 +54,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import androidx.compose.foundation.border
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.player.BufferingIndicator
@@ -147,11 +147,20 @@ fun LivePlayerScreen(
         )
 
         if (state.buffering && state.error == null) {
-            BufferingIndicator(
-                modifier = Modifier
-                    .size(44.dp)
-                    .align(Alignment.Center),
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.align(Alignment.Center),
+            ) {
+                BufferingIndicator(modifier = Modifier.size(44.dp))
+                if (state.reconnecting) {
+                    Spacer(Modifier.height(14.dp))
+                    Text(
+                        text = state.reconnectMessage ?: "Reconnecting…",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White.copy(alpha = 0.88f),
+                    )
+                }
+            }
         }
 
         // Channel info overlay — shown on zap and OK, auto-hides after 4 s.

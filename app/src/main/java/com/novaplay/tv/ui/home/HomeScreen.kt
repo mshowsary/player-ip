@@ -176,20 +176,29 @@ fun HomeScreen(
             WindowWidthClass.MEDIUM -> 148.dp
             WindowWidthClass.EXPANDED -> 164.dp
         }
+        val focusSafetyInset = if (isTv) 18.dp else 0.dp
+        val gridSpacing = if (isTv) 0.dp else 16.dp
+        val compactTv = isTv && layoutInfo.widthClass == WindowWidthClass.COMPACT
+        val verticalArrangement = if (compactTv) {
+            Arrangement.spacedBy(gridSpacing, Alignment.CenterVertically)
+        } else {
+            Arrangement.spacedBy(gridSpacing)
+        }
 
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = minimumCardWidth),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+            verticalArrangement = verticalArrangement,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(vertical = 20.dp),
+                .padding(vertical = if (isTv) 0.dp else 20.dp),
         ) {
             items(cards, key = { it.label }) { card ->
                 HomeCardItem(
                     card = card,
                     modifier = Modifier
+                        .padding(focusSafetyInset)
                         .fillMaxWidth()
                         .aspectRatio(0.94f)
                         .then(
