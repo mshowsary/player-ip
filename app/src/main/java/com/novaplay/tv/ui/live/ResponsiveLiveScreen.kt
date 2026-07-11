@@ -59,8 +59,8 @@ import com.novaplay.tv.ui.theme.screenPadding
 
 /**
  * Adaptive Live browser used by phones, tablets, desktop-sized windows, and TV.
- * Compact touch windows use category chips; larger windows and TV use a fixed
- * category rail so the channel list retains a comfortable readable width.
+ * Compact touch windows use a smart category selector; larger windows and TV
+ * use a fixed category rail so the channel list remains comfortably readable.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -180,7 +180,7 @@ fun ResponsiveLiveScreen(
     ) {
         if (!layout.showCategoryRail) {
             Column(modifier = Modifier.fillMaxSize()) {
-                CategoryChipsRow(
+                CompactCategorySelector(
                     categories = categories.map { it.id to it.name },
                     selectedCategoryId = selectedCategoryId,
                     searchActive = searchActive,

@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -21,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
@@ -30,15 +30,17 @@ import androidx.paging.compose.itemKey
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.data.repo.ContentRepository
-import com.novaplay.tv.ui.live.CategoryChipsRow
 import com.novaplay.tv.ui.live.CategoryRail
+import com.novaplay.tv.ui.live.CompactCategorySelector
 import com.novaplay.tv.ui.live.SearchField
 import com.novaplay.tv.ui.theme.catalogLayoutSpec
 import com.novaplay.tv.ui.theme.screenPadding
 
-// Category rail + poster grid, shared by Movies and Series. The same content
-// state is retained while the current app window moves between phone, tablet,
-// split-screen, desktop, and TV layouts.
+/**
+ * Shared responsive category browser and poster grid for Movies and Series.
+ * Compact touch windows use a smart category selector. Wider touch windows and
+ * TV use a fixed-width category rail and a larger adaptive poster grid.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun <T : Any> CatalogGridScreen(
@@ -57,15 +59,27 @@ fun <T : Any> CatalogGridScreen(
     val gridState = rememberLazyGridState()
     val layout = catalogLayoutSpec()
 
-    // Every group change starts the grid back at the top. Rotation and window
-    // resizing do not change these keys, so the current scroll position survives.
     LaunchedEffect(selectedCategoryId, searchActive) {
         gridState.scrollToItem(0)
+    }
+
+    val selectedCategoryLabel = when (selectedCategoryId) {
+        null -> "All"
+        ContentRepository.CATEGORY_BOOKMARKS -> "Bookmarks"
+        ContentRepository.CATEGORY_RECENT -> "Recently viewed"
+        else -> categories.firstOrNull { it.first == selectedCategoryId }?.second ?: "Category"
     }
 
     val gridPane: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxSize()) {
             Text(text = title, style = MaterialTheme.typography.headlineMedium)
+            Text(
+                text = if (searchActive) "Search results" else selectedCategoryLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
             Spacer(Modifier.height(12.dp))
 
             if (searchActive) {
@@ -127,7 +141,7 @@ fun <T : Any> CatalogGridScreen(
                 .fillMaxSize()
                 .padding(screenPadding()),
         ) {
-            CategoryChipsRow(
+            CompactCategorySelector(
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
                 searchActive = searchActive,
@@ -153,7 +167,6 @@ fun <T : Any> CatalogGridScreen(
                     .fillMaxHeight()
                     .width(layout.categoryRailWidthDp.dp),
             )
-
             Spacer(Modifier.width(24.dp))
             gridPane()
         }
