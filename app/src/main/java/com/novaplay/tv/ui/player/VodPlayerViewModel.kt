@@ -56,6 +56,12 @@ data class VodPlayerUiState(
     val error: String? = null,
 )
 
+private data class ProgressIdentity(
+    val playlistId: Long,
+    val mediaType: String,
+    val remoteId: Long,
+)
+
 @HiltViewModel
 class VodPlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
@@ -80,6 +86,7 @@ class VodPlayerViewModel @Inject constructor(
     private var hideControlsJob: Job? = null
     private var lastSeekAt = 0L
     private var seekStreak = 0
+    private var progressIdentity: ProgressIdentity? = null
 
     init {
         player.addListener(object : Player.Listener {
@@ -136,6 +143,11 @@ class VodPlayerViewModel @Inject constructor(
             Routes.MEDIA_TYPE_MOVIE -> {
                 val movie = contentRepository.movieById(mediaId)
                 movie?.let {
+                    progressIdentity = ProgressIdentity(
+                        playlistId = movie.playlistId,
+                        mediaType = WatchProgress.MEDIA_MOVIE,
+                        remoteId = movie.streamId,
+                    )
                     _uiState.update { s -> s.copy(title = movie.name) }
                     contentRepository.recordRecentView(
                         playlistId = movie.playlistId,
@@ -148,6 +160,11 @@ class VodPlayerViewModel @Inject constructor(
             Routes.MEDIA_TYPE_EPISODE -> {
                 val episode = contentRepository.episodeById(mediaId)
                 episode?.let {
+                    progressIdentity = ProgressIdentity(
+                        playlistId = episode.playlistId,
+                        mediaType = WatchProgress.MEDIA_EPISODE,
+                        remoteId = episode.remoteEpisodeId,
+                    )
                     val series = contentRepository.seriesById(episode.seriesLocalId)
                     val tag = "S%02dE%02d".format(Locale.US, episode.season, episode.episodeNum)
                     _uiState.update { s ->
@@ -344,13 +361,15 @@ class VodPlayerViewModel @Inject constructor(
     }
 
     private suspend fun persistProgress() {
+        val identity = progressIdentity ?: return
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         val position = player.currentPosition.coerceIn(0, duration)
         if (position < 10_000) return
         contentRepository.saveWatchProgress(
             WatchProgress(
-                mediaType = mediaType,
-                mediaId = mediaId,
+                playlistId = identity.playlistId,
+                mediaType = identity.mediaType,
+                remoteId = identity.remoteId,
                 positionMs = position,
                 durationMs = duration,
                 updatedAt = System.currentTimeMillis(),
@@ -361,13 +380,15 @@ class VodPlayerViewModel @Inject constructor(
     override fun onCleared() {
         hideControlsJob?.cancel()
         // Persist final position synchronously enough: player is still valid here.
+        val identity = progressIdentity
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 }
         val position = player.currentPosition
         player.release()
-        if (duration != null && position >= 10_000) {
+        if (identity != null && duration != null && position >= 10_000) {
             val progress = WatchProgress(
-                mediaType = mediaType,
-                mediaId = mediaId,
+                playlistId = identity.playlistId,
+                mediaType = identity.mediaType,
+                remoteId = identity.remoteId,
                 positionMs = position.coerceAtMost(duration),
                 durationMs = duration,
                 updatedAt = System.currentTimeMillis(),

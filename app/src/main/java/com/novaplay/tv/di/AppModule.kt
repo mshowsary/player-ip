@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.data.db.DatabaseMigrations
 import com.novaplay.tv.data.db.NovaDatabase
 import com.novaplay.tv.data.remote.PortalApi
 import com.novaplay.tv.data.remote.XtreamRawApi
@@ -79,6 +80,6 @@ object AppModule {
     fun database(@ApplicationContext context: Context): NovaDatabase =
         Room.databaseBuilder(context, NovaDatabase::class.java, "novaplay.db")
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .fallbackToDestructiveMigration()
+            .addMigrations(DatabaseMigrations.MIGRATION_2_3)
             .build()
 }

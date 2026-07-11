@@ -329,19 +329,44 @@ interface RecentViewDao {
 
 @Dao
 interface WatchProgressDao {
-    @Query("SELECT * FROM watch_progress WHERE mediaType = :mediaType AND mediaId = :mediaId")
-    suspend fun get(mediaType: String, mediaId: Long): WatchProgress?
-
-    @Query("SELECT * FROM watch_progress WHERE mediaType = :mediaType AND mediaId = :mediaId")
-    fun observe(mediaType: String, mediaId: Long): Flow<WatchProgress?>
+    @Query(
+        """SELECT wp.* FROM watch_progress wp
+           INNER JOIN movies m ON wp.playlistId = m.playlistId AND wp.remoteId = m.streamId
+           WHERE wp.mediaType = 'movie' AND m.id = :movieId LIMIT 1""",
+    )
+    suspend fun getForMovie(movieId: Long): WatchProgress?
 
     @Query(
         """SELECT wp.* FROM watch_progress wp
-           JOIN episodes e ON wp.mediaId = e.id
+           INNER JOIN movies m ON wp.playlistId = m.playlistId AND wp.remoteId = m.streamId
+           WHERE wp.mediaType = 'movie' AND m.id = :movieId LIMIT 1""",
+    )
+    fun observeForMovie(movieId: Long): Flow<WatchProgress?>
+
+    @Query(
+        """SELECT wp.* FROM watch_progress wp
+           INNER JOIN episodes e ON wp.playlistId = e.playlistId AND wp.remoteId = e.remoteEpisodeId
+           WHERE wp.mediaType = 'episode' AND e.id = :episodeId LIMIT 1""",
+    )
+    suspend fun getForEpisode(episodeId: Long): WatchProgress?
+
+    @Query(
+        """SELECT wp.* FROM watch_progress wp
+           INNER JOIN episodes e ON wp.playlistId = e.playlistId AND wp.remoteId = e.remoteEpisodeId
+           WHERE wp.mediaType = 'episode' AND e.id = :episodeId LIMIT 1""",
+    )
+    fun observeForEpisode(episodeId: Long): Flow<WatchProgress?>
+
+    @Query(
+        """SELECT wp.* FROM watch_progress wp
+           INNER JOIN episodes e ON wp.playlistId = e.playlistId AND wp.remoteId = e.remoteEpisodeId
            WHERE wp.mediaType = 'episode' AND e.seriesLocalId = :seriesLocalId""",
     )
     fun forSeries(seriesLocalId: Long): Flow<List<WatchProgress>>
 
     @Upsert
     suspend fun upsert(progress: WatchProgress)
+
+    @Query("DELETE FROM watch_progress WHERE playlistId = :playlistId")
+    suspend fun wipeForPlaylist(playlistId: Long)
 }

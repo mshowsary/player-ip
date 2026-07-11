@@ -2,6 +2,7 @@ package com.novaplay.tv.data.repo
 
 import android.util.Log
 import androidx.room.withTransaction
+import com.novaplay.tv.core.StableContentId
 import com.novaplay.tv.data.db.LiveCategory
 import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.db.Movie
@@ -242,7 +243,7 @@ class SyncRepository @Inject constructor(
                 buffer += LiveChannel(
                     playlistId = playlist.id,
                     categoryId = categoryId,
-                    streamId = num.toLong(),
+                    streamId = StableContentId.forM3u(entry.tvgId, entry.url),
                     num = num,
                     name = entry.name,
                     logoUrl = entry.logoUrl,
