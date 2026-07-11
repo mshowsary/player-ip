@@ -27,5 +27,6 @@ object Routes {
     const val MEDIA_TYPE_EPISODE = "episode"
 
     const val PLAYLISTS = "playlists"
+    const val PLAYLISTS_SETUP = "playlists/setup"
     const val SETTINGS = "settings"
 }
