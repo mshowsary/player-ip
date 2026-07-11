@@ -36,122 +36,138 @@ import com.novaplay.tv.ui.settings.SettingsScreen
 fun NovaNavGraph() {
     val navController = rememberNavController()
     NovaBackdrop {
-    NavHost(
-        navController = navController,
-        startDestination = Routes.GATE,
-        // Quick fades — snappy on low-end boxes, no sliding chrome.
-        enterTransition = { fadeIn(tween(220)) },
-        exitTransition = { fadeOut(tween(150)) },
-        popEnterTransition = { fadeIn(tween(220)) },
-        popExitTransition = { fadeOut(tween(150)) },
-    ) {
-        composable(Routes.GATE) { GateScreen(navController) }
-
-        composable(Routes.ACTIVATION) {
-            ActivationScreen(
-                onActivated = {
-                    navController.navigate(Routes.HOME) {
-                        popUpTo(Routes.ACTIVATION) { inclusive = true }
-                    }
-                },
-            )
-        }
-
-        composable(Routes.HOME) {
-            HomeScreen(
-                onOpenLive = { navController.navigate(Routes.LIVE) },
-                onOpenMovies = { navController.navigate(Routes.MOVIES) },
-                onOpenSeries = { navController.navigate(Routes.SERIES) },
-                onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
-            )
-        }
-
-        composable(Routes.LIVE) {
-            LiveScreen(
-                onPlayChannel = { channelId, categoryId ->
-                    navController.navigate(Routes.livePlayer(channelId, categoryId))
-                },
-            )
-        }
-
-        composable(
-            route = Routes.LIVE_PLAYER,
-            arguments = listOf(
-                navArgument("channelId") { type = NavType.LongType },
-                navArgument("categoryId") {
-                    type = NavType.LongType
-                    defaultValue = -1L
-                },
-            ),
+        NavHost(
+            navController = navController,
+            startDestination = Routes.GATE,
+            // Quick fades — snappy on low-end boxes, no sliding chrome.
+            enterTransition = { fadeIn(tween(220)) },
+            exitTransition = { fadeOut(tween(150)) },
+            popEnterTransition = { fadeIn(tween(220)) },
+            popExitTransition = { fadeOut(tween(150)) },
         ) {
-            LivePlayerScreen()
-        }
+            composable(Routes.GATE) { GateScreen(navController) }
 
-        composable(Routes.MOVIES) {
-            MoviesScreen(
-                onOpenMovie = { movieId -> navController.navigate(Routes.movieDetails(movieId)) },
-            )
-        }
+            composable(Routes.ACTIVATION) {
+                ActivationScreen(
+                    onActivated = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.ACTIVATION) { inclusive = true }
+                        }
+                    },
+                    onAddPersonalPlaylist = {
+                        navController.navigate(Routes.PLAYLISTS_SETUP)
+                    },
+                )
+            }
 
-        composable(
-            route = Routes.MOVIE_DETAILS,
-            arguments = listOf(navArgument("movieId") { type = NavType.LongType }),
-        ) {
-            MovieDetailsScreen(
-                onPlay = { movieId, resume ->
-                    navController.navigate(
-                        Routes.vodPlayer(Routes.MEDIA_TYPE_MOVIE, movieId, resume),
-                    )
-                },
-            )
-        }
+            composable(Routes.HOME) {
+                HomeScreen(
+                    onOpenLive = { navController.navigate(Routes.LIVE) },
+                    onOpenMovies = { navController.navigate(Routes.MOVIES) },
+                    onOpenSeries = { navController.navigate(Routes.SERIES) },
+                    onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
+                    onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                )
+            }
 
-        composable(Routes.SERIES) {
-            SeriesScreen(
-                onOpenSeries = { seriesId -> navController.navigate(Routes.seriesDetails(seriesId)) },
-            )
-        }
+            composable(Routes.LIVE) {
+                LiveScreen(
+                    onPlayChannel = { channelId, categoryId ->
+                        navController.navigate(Routes.livePlayer(channelId, categoryId))
+                    },
+                )
+            }
 
-        composable(
-            route = Routes.SERIES_DETAILS,
-            arguments = listOf(navArgument("seriesId") { type = NavType.LongType }),
-        ) {
-            SeriesDetailsScreen(
-                onPlayEpisode = { episodeId, resume ->
-                    navController.navigate(
-                        Routes.vodPlayer(Routes.MEDIA_TYPE_EPISODE, episodeId, resume),
-                    )
-                },
-            )
-        }
+            composable(
+                route = Routes.LIVE_PLAYER,
+                arguments = listOf(
+                    navArgument("channelId") { type = NavType.LongType },
+                    navArgument("categoryId") {
+                        type = NavType.LongType
+                        defaultValue = -1L
+                    },
+                ),
+            ) {
+                LivePlayerScreen()
+            }
 
-        composable(
-            route = Routes.VOD_PLAYER,
-            arguments = listOf(
-                navArgument("mediaType") { type = NavType.StringType },
-                navArgument("mediaId") { type = NavType.LongType },
-                navArgument("resume") {
-                    type = NavType.BoolType
-                    defaultValue = false
-                },
-            ),
-        ) {
-            VodPlayerScreen()
-        }
+            composable(Routes.MOVIES) {
+                MoviesScreen(
+                    onOpenMovie = { movieId -> navController.navigate(Routes.movieDetails(movieId)) },
+                )
+            }
 
-        composable(Routes.PLAYLISTS) {
-            PlaylistsScreen(
-                onAllPlaylistsRemoved = {
-                    navController.navigate(Routes.ACTIVATION) {
-                        popUpTo(0) { inclusive = true }
-                    }
-                },
-            )
-        }
+            composable(
+                route = Routes.MOVIE_DETAILS,
+                arguments = listOf(navArgument("movieId") { type = NavType.LongType }),
+            ) {
+                MovieDetailsScreen(
+                    onPlay = { movieId, resume ->
+                        navController.navigate(
+                            Routes.vodPlayer(Routes.MEDIA_TYPE_MOVIE, movieId, resume),
+                        )
+                    },
+                )
+            }
 
-        composable(Routes.SETTINGS) { SettingsScreen() }
-    }
+            composable(Routes.SERIES) {
+                SeriesScreen(
+                    onOpenSeries = { seriesId -> navController.navigate(Routes.seriesDetails(seriesId)) },
+                )
+            }
+
+            composable(
+                route = Routes.SERIES_DETAILS,
+                arguments = listOf(navArgument("seriesId") { type = NavType.LongType }),
+            ) {
+                SeriesDetailsScreen(
+                    onPlayEpisode = { episodeId, resume ->
+                        navController.navigate(
+                            Routes.vodPlayer(Routes.MEDIA_TYPE_EPISODE, episodeId, resume),
+                        )
+                    },
+                )
+            }
+
+            composable(
+                route = Routes.VOD_PLAYER,
+                arguments = listOf(
+                    navArgument("mediaType") { type = NavType.StringType },
+                    navArgument("mediaId") { type = NavType.LongType },
+                    navArgument("resume") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    },
+                ),
+            ) {
+                VodPlayerScreen()
+            }
+
+            composable(Routes.PLAYLISTS) {
+                PlaylistsScreen(
+                    onAllPlaylistsRemoved = {
+                        navController.navigate(Routes.ACTIVATION) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            composable(Routes.PLAYLISTS_SETUP) {
+                PlaylistsScreen(
+                    onAllPlaylistsRemoved = {
+                        navController.popBackStack()
+                    },
+                    onPlaylistReady = {
+                        navController.navigate(Routes.HOME) {
+                            popUpTo(Routes.ACTIVATION) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
+            composable(Routes.SETTINGS) { SettingsScreen() }
+        }
     }
 }
 
