@@ -120,7 +120,7 @@ class PlaylistManager @Inject constructor(
             val destination = File(directory, "${UUID.randomUUID()}.m3u")
 
             context.contentResolver.openInputStream(uri)?.use { input ->
-                destination.outputStream().buffered().use(input::copyTo)
+                destination.outputStream().buffered().use { output -> input.copyTo(output) }
             } ?: error("Could not read the selected file")
 
             try {
@@ -150,6 +150,12 @@ class PlaylistManager @Inject constructor(
     )
 
     fun isPersonal(playlist: Playlist): Boolean = playlist.portalId < 0L
+
+    fun deleteImportedFile(playlist: Playlist) {
+        val source = playlist.url ?: return
+        if (!isPersonal(playlist) || playlist.type != Playlist.TYPE_M3U || !source.startsWith("file:")) return
+        runCatching { File(URI(source)).delete() }
+    }
 
     private suspend fun nextLocalPortalId(): Long {
         val dao = db.playlistDao()
