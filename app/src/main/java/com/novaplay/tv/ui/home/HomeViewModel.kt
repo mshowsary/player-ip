@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,10 +18,13 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     contentRepository: ContentRepository,
     syncRepository: SyncRepository,
+    managedAccessRepository: ManagedAccessRepository,
 ) : ViewModel() {
 
     val playlist: StateFlow<Playlist?> = contentRepository.activePlaylist
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val syncStatus: StateFlow<SyncStatus> = syncRepository.status
+
+    val managedAccess: StateFlow<ManagedAccessPolicy> = managedAccessRepository.policy
 }
