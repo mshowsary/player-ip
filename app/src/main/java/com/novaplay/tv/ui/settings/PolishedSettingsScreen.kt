@@ -379,6 +379,8 @@ private fun StableChoice(
     focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
+    val localFocusRequester = remember { FocusRequester() }
+    val requester = focusRequester ?: localFocusRequester
     val shape = RoundedCornerShape(50)
     val background = when {
         selected -> MaterialTheme.colorScheme.surfaceVariant
@@ -395,12 +397,17 @@ private fun StableChoice(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier
-            .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
+            .focusRequester(requester)
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(background)
             .border(if (focused) 2.dp else 1.dp, outline, shape)
-            .clickable(onClick = onClick)
+            .clickable {
+                // In forced TV mode on a touch device, focus follows the option
+                // being tapped so the old D-pad selector cannot remain elsewhere.
+                runCatching { requester.requestFocus() }
+                onClick()
+            }
             .semantics {
                 role = Role.RadioButton
                 this.selected = selected
