@@ -93,6 +93,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.coroutines.android)
     implementation(libs.datastore.preferences)
+    implementation(libs.work.runtime)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
