@@ -3,6 +3,8 @@ package com.novaplay.tv.data.prefs
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -23,6 +25,16 @@ enum class LiveFormat(val label: String) {
     AUTO("Auto"),
     HLS("HLS"),
     TS("MPEG-TS"),
+}
+
+enum class BackgroundSyncMode(
+    val label: String,
+    val intervalHours: Long?,
+    val description: String,
+) {
+    OFF("Off", null, "Refresh only when you request it"),
+    DAILY("Daily", 24L, "Refresh once a day on Wi-Fi or Ethernet"),
+    TWICE_DAILY("Twice daily", 12L, "Refresh about every 12 hours on Wi-Fi or Ethernet"),
 }
 
 enum class SubtitleSize(val label: String, val fraction: Float) {
@@ -67,6 +79,20 @@ data class PlaybackTrackPreferences(
     val subtitleLabel: String? = null,
 )
 
+data class LastSyncSummary(
+    val completedAtEpochMs: Long = 0L,
+    val durationMs: Long = 0L,
+    val successful: Boolean = false,
+    val trigger: String = "",
+    val playlistType: String = "",
+    val liveChannels: Int = 0,
+    val movies: Int = 0,
+    val series: Int = 0,
+    val error: String? = null,
+) {
+    val exists: Boolean get() = completedAtEpochMs > 0L
+}
+
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
 @Singleton
@@ -79,6 +105,7 @@ class AppPreferences @Inject constructor(
         val DEVICE_KEY = stringPreferencesKey("device_key")
         val UI_MODE = stringPreferencesKey("ui_mode")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
+        val BACKGROUND_SYNC_MODE = stringPreferencesKey("background_sync_mode")
         val SUB_SIZE = stringPreferencesKey("sub_size")
         val SUB_COLOR = stringPreferencesKey("sub_color")
         val SUB_BACKGROUND = stringPreferencesKey("sub_background")
@@ -88,6 +115,15 @@ class AppPreferences @Inject constructor(
         val VOD_SUBTITLES_ENABLED = booleanPreferencesKey("vod_subtitles_enabled")
         val VOD_SUBTITLE_LANGUAGE = stringPreferencesKey("vod_subtitle_language")
         val VOD_SUBTITLE_LABEL = stringPreferencesKey("vod_subtitle_label")
+        val LAST_SYNC_AT = longPreferencesKey("last_sync_at")
+        val LAST_SYNC_DURATION = longPreferencesKey("last_sync_duration")
+        val LAST_SYNC_SUCCESS = booleanPreferencesKey("last_sync_success")
+        val LAST_SYNC_TRIGGER = stringPreferencesKey("last_sync_trigger")
+        val LAST_SYNC_PLAYLIST_TYPE = stringPreferencesKey("last_sync_playlist_type")
+        val LAST_SYNC_LIVE = intPreferencesKey("last_sync_live")
+        val LAST_SYNC_MOVIES = intPreferencesKey("last_sync_movies")
+        val LAST_SYNC_SERIES = intPreferencesKey("last_sync_series")
+        val LAST_SYNC_ERROR = stringPreferencesKey("last_sync_error")
     }
 
     private inline fun <reified T : Enum<T>> String?.toEnum(default: T): T =
@@ -125,6 +161,14 @@ class AppPreferences @Inject constructor(
 
     suspend fun setLiveFormat(format: LiveFormat) {
         context.dataStore.edit { it[Keys.LIVE_FORMAT] = format.name }
+    }
+
+    val backgroundSyncMode: Flow<BackgroundSyncMode> = context.dataStore.data
+        .map { it[Keys.BACKGROUND_SYNC_MODE].toEnum(BackgroundSyncMode.DAILY) }
+        .distinctUntilChanged()
+
+    suspend fun setBackgroundSyncMode(mode: BackgroundSyncMode) {
+        context.dataStore.edit { it[Keys.BACKGROUND_SYNC_MODE] = mode.name }
     }
 
     val subtitleStyle: Flow<SubtitleStyle> = context.dataStore.data
@@ -171,6 +215,36 @@ class AppPreferences @Inject constructor(
             prefs[Keys.VOD_SUBTITLES_ENABLED] = enabled
             language.storeOrRemove(prefs, Keys.VOD_SUBTITLE_LANGUAGE)
             label.storeOrRemove(prefs, Keys.VOD_SUBTITLE_LABEL)
+        }
+    }
+
+    val lastSyncSummary: Flow<LastSyncSummary> = context.dataStore.data
+        .map { prefs ->
+            LastSyncSummary(
+                completedAtEpochMs = prefs[Keys.LAST_SYNC_AT] ?: 0L,
+                durationMs = prefs[Keys.LAST_SYNC_DURATION] ?: 0L,
+                successful = prefs[Keys.LAST_SYNC_SUCCESS] ?: false,
+                trigger = prefs[Keys.LAST_SYNC_TRIGGER].orEmpty(),
+                playlistType = prefs[Keys.LAST_SYNC_PLAYLIST_TYPE].orEmpty(),
+                liveChannels = prefs[Keys.LAST_SYNC_LIVE] ?: 0,
+                movies = prefs[Keys.LAST_SYNC_MOVIES] ?: 0,
+                series = prefs[Keys.LAST_SYNC_SERIES] ?: 0,
+                error = prefs[Keys.LAST_SYNC_ERROR],
+            )
+        }
+        .distinctUntilChanged()
+
+    suspend fun recordSyncSummary(summary: LastSyncSummary) {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.LAST_SYNC_AT] = summary.completedAtEpochMs
+            prefs[Keys.LAST_SYNC_DURATION] = summary.durationMs
+            prefs[Keys.LAST_SYNC_SUCCESS] = summary.successful
+            prefs[Keys.LAST_SYNC_TRIGGER] = summary.trigger
+            prefs[Keys.LAST_SYNC_PLAYLIST_TYPE] = summary.playlistType
+            prefs[Keys.LAST_SYNC_LIVE] = summary.liveChannels
+            prefs[Keys.LAST_SYNC_MOVIES] = summary.movies
+            prefs[Keys.LAST_SYNC_SERIES] = summary.series
+            summary.error.storeOrRemove(prefs, Keys.LAST_SYNC_ERROR)
         }
     }
 

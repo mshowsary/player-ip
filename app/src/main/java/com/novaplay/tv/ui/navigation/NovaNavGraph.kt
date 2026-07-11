@@ -35,7 +35,7 @@ import com.novaplay.tv.ui.player.VodPlayerScreen
 import com.novaplay.tv.ui.playlists.AdaptivePlaylistsScreen
 import com.novaplay.tv.ui.series.SeriesDetailsScreen
 import com.novaplay.tv.ui.series.SeriesScreen
-import com.novaplay.tv.ui.settings.PolishedSettingsScreen
+import com.novaplay.tv.ui.settings.EnhancedSettingsScreen
 import com.novaplay.tv.ui.theme.isTvDevice
 
 @Composable
@@ -230,7 +230,7 @@ fun NovaNavGraph(
                     )
                 }
 
-                composable(Routes.SETTINGS) { PolishedSettingsScreen() }
+                composable(Routes.SETTINGS) { EnhancedSettingsScreen() }
             }
         }
     }
