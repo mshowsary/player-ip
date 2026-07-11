@@ -1,0 +1,279 @@
+package com.novaplay.tv.ui.settings
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
+import com.novaplay.tv.data.prefs.BackgroundSyncMode
+import com.novaplay.tv.data.prefs.LastSyncSummary
+import com.novaplay.tv.data.repo.AppDiagnostics
+import com.novaplay.tv.data.repo.AppDiagnosticsRepository
+import com.novaplay.tv.data.repo.SyncStatus
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PerformanceSettingsPanel(
+    syncStatus: SyncStatus,
+    cacheCleared: Boolean,
+    backgroundMode: BackgroundSyncMode,
+    lastSync: LastSyncSummary,
+    diagnostics: AppDiagnostics,
+    message: String?,
+    onBackgroundMode: (BackgroundSyncMode) -> Unit,
+    onSync: () -> Unit,
+    onClearCache: () -> Unit,
+    onRefreshDiagnostics: () -> Unit,
+    onCopyDiagnostics: () -> Unit,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium)
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.border.copy(alpha = 0.55f),
+                shape = MaterialTheme.shapes.medium,
+            )
+            .padding(18.dp),
+    ) {
+        Text(text = "Performance and synchronization", style = MaterialTheme.typography.titleLarge)
+        Text(
+            text = "Keep the active catalogue fresh without interrupting browsing, and create privacy-safe support information.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Text(
+            text = "Automatic catalogue refresh",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            BackgroundSyncMode.entries.forEach { mode ->
+                PerformanceChoice(
+                    text = mode.label,
+                    selected = mode == backgroundMode,
+                    onClick = { onBackgroundMode(mode) },
+                )
+            }
+        }
+        Text(
+            text = backgroundMode.description + if (backgroundMode == BackgroundSyncMode.OFF) {
+                "."
+            } else {
+                ". Android may delay it to protect battery, storage and network stability."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+
+        if (lastSync.exists) {
+            val result = if (lastSync.successful) "Successful" else "Failed"
+            DiagnosticRow("Last refresh", "$result · ${lastSync.trigger.ifBlank { "Unknown" }}")
+            DiagnosticRow(
+                "Completed",
+                AppDiagnosticsRepository.formatDateTime(lastSync.completedAtEpochMs),
+            )
+            DiagnosticRow(
+                "Duration",
+                AppDiagnosticsRepository.formatDuration(lastSync.durationMs),
+            )
+            DiagnosticRow(
+                "Installed catalogue",
+                "${lastSync.liveChannels} live · ${lastSync.movies} movies · ${lastSync.series} series",
+            )
+            lastSync.error?.let { error ->
+                Text(
+                    text = error,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        } else {
+            Text(
+                text = "No refresh report has been recorded yet.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        com.novaplay.tv.ui.components.NovaButton(
+            text = when (syncStatus) {
+                is SyncStatus.Syncing -> "Syncing ${syncStatus.step}…"
+                else -> "Re-sync active playlist"
+            },
+            onClick = onSync,
+            prominent = syncStatus !is SyncStatus.Syncing,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (syncStatus is SyncStatus.Failed) {
+            Text(
+                text = syncStatus.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        com.novaplay.tv.ui.components.NovaButton(
+            text = if (cacheCleared) "Image cache cleared ✓" else "Clear image cache",
+            onClick = onClearCache,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Text(
+            text = "Device health",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        DiagnosticRow("Network", diagnostics.networkLabel)
+        DiagnosticRow(
+            "Memory",
+            "${diagnostics.memoryClassMb} MB" + if (diagnostics.lowRamDevice) " · low-RAM mode" else "",
+        )
+        DiagnosticRow("Database", AppDiagnosticsRepository.formatBytes(diagnostics.databaseBytes))
+        DiagnosticRow("Image cache", AppDiagnosticsRepository.formatBytes(diagnostics.imageCacheBytes))
+        DiagnosticRow("Temporary snapshots", AppDiagnosticsRepository.formatBytes(diagnostics.snapshotCacheBytes))
+        DiagnosticRow("Free storage", AppDiagnosticsRepository.formatBytes(diagnostics.freeStorageBytes))
+        DiagnosticRow(
+            "Active catalogue",
+            "${diagnostics.liveChannels} live · ${diagnostics.movies} movies · ${diagnostics.series} series",
+        )
+
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            com.novaplay.tv.ui.components.NovaButton(
+                text = "Refresh health",
+                onClick = onRefreshDiagnostics,
+                modifier = Modifier.weight(1f),
+            )
+            com.novaplay.tv.ui.components.NovaButton(
+                text = "Copy support info",
+                onClick = onCopyDiagnostics,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Text(
+            text = message ?: "Support info excludes playlist URLs, credentials, tokens and device identifiers.",
+            style = MaterialTheme.typography.bodySmall,
+            color = if (message == null) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+        )
+    }
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = value.ifBlank { "—" },
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1.35f),
+        )
+    }
+}
+
+@Composable
+private fun PerformanceChoice(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    var focused by remember { mutableStateOf(false) }
+    val requester = remember { FocusRequester() }
+    val shape = RoundedCornerShape(50)
+    val background = when {
+        selected -> MaterialTheme.colorScheme.surfaceVariant
+        focused -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+        else -> MaterialTheme.colorScheme.background
+    }
+    val outline = when {
+        focused -> MaterialTheme.colorScheme.primary
+        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.82f)
+        else -> MaterialTheme.colorScheme.border.copy(alpha = 0.62f)
+    }
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .focusRequester(requester)
+            .onFocusChanged { focused = it.isFocused }
+            .clip(shape)
+            .background(background)
+            .border(if (focused) 2.dp else 1.dp, outline, shape)
+            .clickable {
+                runCatching { requester.requestFocus() }
+                onClick()
+            }
+            .semantics {
+                role = Role.RadioButton
+                this.selected = selected
+            }
+            .heightIn(min = 46.dp)
+            .padding(horizontal = 14.dp, vertical = 9.dp),
+    ) {
+        if (selected) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.primary),
+            )
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected || focused) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            maxLines = 1,
+        )
+    }
+}
