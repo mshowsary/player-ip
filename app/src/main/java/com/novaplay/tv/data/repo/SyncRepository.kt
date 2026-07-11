@@ -3,6 +3,7 @@ package com.novaplay.tv.data.repo
 import android.content.Context
 import android.util.Log
 import androidx.room.withTransaction
+import com.novaplay.tv.core.SafeErrorMessage
 import com.novaplay.tv.core.StableContentId
 import com.novaplay.tv.data.db.LiveCategory
 import com.novaplay.tv.data.db.LiveChannel
@@ -54,7 +55,7 @@ class SyncRepository @Inject constructor(
     }
 
     suspend fun sync(playlist: Playlist): Result<Unit> = syncMutex.withLock {
-        runCatching {
+        val result = runCatching {
             when (playlist.type) {
                 Playlist.TYPE_XTREAM -> syncXtream(playlist)
                 Playlist.TYPE_M3U -> syncM3u(playlist)
@@ -63,12 +64,18 @@ class SyncRepository @Inject constructor(
             optimizeFts()
             db.playlistDao().updateLastSync(playlist.id, System.currentTimeMillis())
             _status.value = SyncStatus.Idle
-        }.onFailure { error ->
-            val message = safeErrorMessage(error)
-            // Do not attach the throwable: provider URLs can contain credentials.
-            Log.w(TAG, "Sync failed for playlist ${playlist.id}: ${error::class.java.simpleName}: $message")
-            _status.value = SyncStatus.Failed(message)
         }
+
+        result.fold(
+            onSuccess = { Result.success(Unit) },
+            onFailure = { error ->
+                val message = SafeErrorMessage.from(error, "Synchronization failed")
+                // Do not attach the throwable: provider URLs can contain credentials.
+                Log.w(TAG, "Sync failed for playlist ${playlist.id}: ${error::class.java.simpleName}: $message")
+                _status.value = SyncStatus.Failed(message)
+                Result.failure(IllegalStateException(message))
+            },
+        )
     }
 
     private suspend fun syncXtream(playlist: Playlist) {
@@ -92,7 +99,7 @@ class SyncRepository @Inject constructor(
     }
 
     // Network and provider parsing are staged to a bounded cache file first.
-    // The old catalogue stays readable until a short, local-only replacement
+    // The old catalogue stays readable until a local-only replacement
     // transaction completes successfully.
     private suspend fun syncLive(playlist: Playlist) {
         val categories = xtream.liveCategories(playlist)
@@ -297,7 +304,8 @@ class SyncRepository @Inject constructor(
 
     private fun newSnapshot(prefix: String, suffix: String): File {
         val directory = File(context.cacheDir, "catalog_snapshots").apply { mkdirs() }
-        directory.listFiles()?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - SNAPSHOT_TTL_MS }
+        directory.listFiles()
+            ?.filter { it.isFile && it.lastModified() < System.currentTimeMillis() - SNAPSHOT_TTL_MS }
             ?.forEach(File::delete)
         return File.createTempFile("$prefix-", suffix, directory)
     }
@@ -311,19 +319,10 @@ class SyncRepository @Inject constructor(
         }
     }
 
-    private fun safeErrorMessage(error: Throwable): String {
-        val raw = error.message?.takeIf { it.isNotBlank() } ?: "Synchronization failed"
-        return raw
-            .replace(URL_REGEX, "[redacted URL]")
-            .replace(CREDENTIAL_QUERY_REGEX, "$1=•••")
-    }
-
     private companion object {
         const val TAG = "SyncRepository"
         const val CHUNK = 1000
         const val STALE_AFTER_MS = 12L * 60 * 60 * 1000
         const val SNAPSHOT_TTL_MS = 24L * 60 * 60 * 1000
-        val URL_REGEX = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
-        val CREDENTIAL_QUERY_REGEX = Regex("""(?i)(username|password)=([^&\s]+)""")
     }
 }
