@@ -1,8 +1,12 @@
 package com.novaplay.tv.data.remote
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import retrofit2.Response
+import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
+import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
@@ -22,8 +26,79 @@ data class PortalPlaylistsResponse(
     val playlists: List<PortalPlaylistDto> = emptyList(),
 )
 
+/**
+ * Device-code pairing contract used by the future provider/reseller portal.
+ *
+ * The TV creates a short-lived session, displays [PairingSessionDto.userCode],
+ * and polls with a high-entropy session secret. The human-readable code is not
+ * an API credential. After approval the portal issues revocable device tokens.
+ */
+@Serializable
+data class CreatePairingSessionRequest(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("legacy_mac") val legacyMac: String? = null,
+    @SerialName("device_name") val deviceName: String,
+    val platform: String = "android",
+    @SerialName("app_version") val appVersion: String,
+    val capabilities: List<String> = listOf("xtream", "m3u", "live", "vod", "series"),
+)
+
+@Serializable
+data class PairingSessionDto(
+    @SerialName("session_id") val sessionId: String,
+    @SerialName("user_code") val userCode: String,
+    @SerialName("verification_uri") val verificationUri: String,
+    @SerialName("expires_at") val expiresAtEpochSec: Long,
+    @SerialName("interval_seconds") val intervalSeconds: Int = 5,
+    @SerialName("session_secret") val sessionSecret: String,
+)
+
+@Serializable
+data class PairingStatusDto(
+    val status: String,
+    @SerialName("access_token") val accessToken: String? = null,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    @SerialName("expires_in") val expiresInSeconds: Long? = null,
+    val playlists: List<PortalPlaylistDto> = emptyList(),
+)
+
+@Serializable
+data class RefreshDeviceTokenRequest(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("refresh_token") val refreshToken: String,
+)
+
+@Serializable
+data class DeviceTokenDto(
+    @SerialName("access_token") val accessToken: String,
+    @SerialName("refresh_token") val refreshToken: String? = null,
+    @SerialName("expires_in") val expiresInSeconds: Long,
+)
+
 interface PortalApi {
-    // 200 = playlists attached; 404 = device not registered yet; 403 = key mismatch.
+    @POST("api/v1/pairing/sessions")
+    suspend fun createPairingSession(
+        @Body request: CreatePairingSessionRequest,
+    ): Response<PairingSessionDto>
+
+    @GET("api/v1/pairing/sessions/{sessionId}")
+    suspend fun getPairingStatus(
+        @Path("sessionId") sessionId: String,
+        @Header("X-Pairing-Secret") sessionSecret: String,
+    ): Response<PairingStatusDto>
+
+    @GET("api/v1/device/playlists")
+    suspend fun getAuthorizedPlaylists(
+        @Header("Authorization") authorization: String,
+    ): Response<PortalPlaylistsResponse>
+
+    @POST("api/v1/device/token/refresh")
+    suspend fun refreshDeviceToken(
+        @Body request: RefreshDeviceTokenRequest,
+    ): Response<DeviceTokenDto>
+
+    // Temporary backwards-compatible endpoint. It remains until the real
+    // portal and existing test setup have migrated to device-code pairing.
     @GET("api/v1/devices/{mac}/playlists")
     suspend fun getPlaylists(
         @Path("mac") mac: String,
@@ -32,8 +107,6 @@ interface PortalApi {
 }
 
 // Debug-only stand-in until the real portal exists (BuildConfig.MOCK_ACTIVATION).
-// Point the credentials at any test Xtream panel to exercise the full app.
-// 10.0.2.2 = host loopback from the Android emulator (see scratchpad mock_server.py).
 object MockPortal {
     val playlists = listOf(
         PortalPlaylistDto(

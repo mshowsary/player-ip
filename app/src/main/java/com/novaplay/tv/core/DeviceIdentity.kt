@@ -13,10 +13,15 @@ import java.io.File
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-data class DeviceIdentityInfo(val mac: String, val deviceKey: String)
+data class DeviceIdentityInfo(
+    val deviceId: String,
+    val mac: String,
+    val deviceKey: String,
+)
 
 @Singleton
 class DeviceIdentity @Inject constructor(
@@ -30,17 +35,20 @@ class DeviceIdentity @Inject constructor(
 
     suspend fun get(): DeviceIdentityInfo = cached ?: mutex.withLock {
         cached ?: withContext(Dispatchers.IO) {
+            // The installation UUID is the primary portal identity. It avoids
+            // treating a hardware MAC address as an authentication secret and
+            // remains stable across app upgrades on this installation.
+            val deviceId = prefs.deviceId()
+                ?: UUID.randomUUID().toString().also { prefs.setDeviceId(it) }
             val mac = prefs.deviceMac() ?: resolveMac().also { prefs.setDeviceMac(it) }
             val key = prefs.deviceKey() ?: generateDeviceKey().also { prefs.setDeviceKey(it) }
-            DeviceIdentityInfo(mac, key)
+            DeviceIdentityInfo(deviceId = deviceId, mac = mac, deviceKey = key)
         }.also { cached = it }
     }
 
-    // Android TV boxes are messy. Resolution order, first hit wins and is
-    // persisted forever:
-    //   1. NetworkInterface hardware address of eth0, then wlan0
-    //   2. /sys/class/net/eth0/address
-    //   3. deterministic pseudo-MAC derived from ANDROID_ID
+    // Legacy display/support identifier. New portal pairing uses deviceId and
+    // a server-issued one-time code, but old installations keep their MAC value
+    // so the migration does not break the current mock/legacy portal contract.
     private fun resolveMac(): String {
         for (ifaceName in listOf("eth0", "wlan0")) {
             runCatching {
@@ -63,7 +71,6 @@ class DeviceIdentity @Inject constructor(
     private fun isUsableMac(mac: String): Boolean =
         MAC_REGEX.matches(mac) &&
             mac != "00:00:00:00:00:00" &&
-            // Android 6+ hands out this constant instead of the real address.
             mac != "02:00:00:00:00:00"
 
     @SuppressLint("HardwareIds")
@@ -83,8 +90,6 @@ class DeviceIdentity @Inject constructor(
 
     private companion object {
         val MAC_REGEX = Regex("^([0-9A-F]{2}:){5}[0-9A-F]{2}$")
-
-        // No I/O/0/1 — users type this code on a phone while squinting at a TV.
         const val KEY_CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
         const val KEY_LENGTH = 6
     }

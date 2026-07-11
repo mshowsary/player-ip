@@ -64,6 +64,7 @@ class AppPreferences @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private object Keys {
+        val DEVICE_ID = stringPreferencesKey("device_id")
         val DEVICE_MAC = stringPreferencesKey("device_mac")
         val DEVICE_KEY = stringPreferencesKey("device_key")
         val UI_MODE = stringPreferencesKey("ui_mode")
@@ -76,6 +77,12 @@ class AppPreferences @Inject constructor(
 
     private inline fun <reified T : Enum<T>> String?.toEnum(default: T): T =
         this?.let { name -> enumValues<T>().firstOrNull { it.name == name } } ?: default
+
+    suspend fun deviceId(): String? = context.dataStore.data.first()[Keys.DEVICE_ID]
+
+    suspend fun setDeviceId(id: String) {
+        context.dataStore.edit { it[Keys.DEVICE_ID] = id }
+    }
 
     suspend fun deviceMac(): String? = context.dataStore.data.first()[Keys.DEVICE_MAC]
 
