@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import com.novaplay.tv.data.db.NovaDatabase
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.remote.XtreamClient
+import com.novaplay.tv.data.security.PlaylistSecrets
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,8 +38,6 @@ data class PlaylistProbe(
 /**
  * Owns playlists entered directly by the user. Portal-managed playlists keep a
  * non-negative portalId and are intentionally read-only from this repository.
- * Personal playlists use a reserved negative portalId so no schema migration is
- * needed while the durable identity work is completed in the next milestone.
  */
 @Singleton
 class PlaylistManager @Inject constructor(
@@ -46,6 +45,7 @@ class PlaylistManager @Inject constructor(
     private val db: NovaDatabase,
     private val xtream: XtreamClient,
     private val okHttpClient: OkHttpClient,
+    private val playlistSecrets: PlaylistSecrets,
 ) {
 
     suspend fun test(draft: PlaylistDraft): Result<PlaylistProbe> = runCatching {
@@ -82,12 +82,13 @@ class PlaylistManager @Inject constructor(
 
         if (normalized.id == null) {
             val shouldActivate = dao.count() == 0
-            val insertedId = dao.insert(
+            val sealed = playlistSecrets.seal(
                 normalized.toPlaylist(
                     portalId = nextLocalPortalId(),
                     isActive = shouldActivate,
                 ),
             )
+            val insertedId = dao.insert(sealed)
             if (shouldActivate) dao.setActive(insertedId)
             checkNotNull(dao.getById(insertedId))
         } else {
@@ -103,7 +104,7 @@ class PlaylistManager @Inject constructor(
                 password = normalized.password.takeIf { existing.type == Playlist.TYPE_XTREAM },
                 url = normalized.url.takeIf { existing.type == Playlist.TYPE_M3U },
                 lastSyncEpochMs = 0L,
-            )
+            ).let(playlistSecrets::seal)
             dao.update(updated)
             updated
         }
@@ -139,21 +140,25 @@ class PlaylistManager @Inject constructor(
         }
     }
 
-    fun draftFrom(playlist: Playlist): PlaylistDraft = PlaylistDraft(
-        id = playlist.id,
-        name = playlist.name,
-        type = playlist.type,
-        server = playlist.server.orEmpty(),
-        username = playlist.username.orEmpty(),
-        password = playlist.password.orEmpty(),
-        url = playlist.url.orEmpty(),
-    )
+    fun draftFrom(playlist: Playlist): PlaylistDraft {
+        val opened = playlistSecrets.open(playlist)
+        return PlaylistDraft(
+            id = opened.id,
+            name = opened.name,
+            type = opened.type,
+            server = opened.server.orEmpty(),
+            username = opened.username.orEmpty(),
+            password = opened.password.orEmpty(),
+            url = opened.url.orEmpty(),
+        )
+    }
 
     fun isPersonal(playlist: Playlist): Boolean = playlist.portalId < 0L
 
     fun deleteImportedFile(playlist: Playlist) {
-        val source = playlist.url ?: return
-        if (!isPersonal(playlist) || playlist.type != Playlist.TYPE_M3U || !source.startsWith("file:")) return
+        val opened = playlistSecrets.open(playlist)
+        val source = opened.url ?: return
+        if (!isPersonal(opened) || opened.type != Playlist.TYPE_M3U || !source.startsWith("file:")) return
         runCatching { File(URI(source)).delete() }
     }
 
