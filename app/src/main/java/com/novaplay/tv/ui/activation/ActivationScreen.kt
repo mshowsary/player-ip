@@ -24,13 +24,14 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
@@ -40,11 +41,11 @@ import com.novaplay.tv.ui.components.PulsingDot
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
-import androidx.compose.ui.res.stringResource
 
 @Composable
 fun ActivationScreen(
     onActivated: () -> Unit,
+    onAddPersonalPlaylist: () -> Unit,
     viewModel: ActivationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -91,8 +92,7 @@ fun ActivationScreen(
                 letterSpacing = 4.sp,
             )
             Spacer(Modifier.height(16.dp))
-            // The visual centerpiece: the address users copy to the portal.
-            // Sized down on phones so all six octets stay on one line.
+            // Kept for compatibility with existing MAC-based reseller portals.
             Text(
                 text = state.mac.ifBlank { "··:··:··:··:··:··" },
                 fontFamily = FontFamily.Monospace,
@@ -117,32 +117,50 @@ fun ActivationScreen(
                     color = accent,
                 )
             }
-            Spacer(Modifier.height(36.dp))
+            Spacer(Modifier.height(30.dp))
             Text(
-                text = "Visit ${portalDisplayUrl()} and enter your MAC address and device key to attach your playlist",
+                text = "Use a managed playlist from your provider, or add your own Xtream or M3U playlist directly.",
                 style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.widthIn(max = 600.dp),
+            )
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "Managed activation: visit ${portalDisplayUrl()} and enter the MAC address and device key.",
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.widthIn(max = 560.dp),
             )
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(30.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 PulsingDot(modifier = Modifier.size(10.dp))
                 Text(
-                    text = if (state.checking) "Checking…" else "Waiting for activation…",
+                    text = if (state.checking) "Checking…" else "Waiting for managed activation…",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             Spacer(Modifier.height(24.dp))
-            NovaButton(
-                text = "Check now",
-                onClick = viewModel::checkNow,
-                modifier = Modifier.focusRequester(checkNowFocus),
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                NovaButton(
+                    text = "Check managed activation",
+                    onClick = viewModel::checkNow,
+                    modifier = Modifier.focusRequester(checkNowFocus),
+                )
+                NovaButton(
+                    text = "Add my own playlist",
+                    onClick = onAddPersonalPlaylist,
+                    prominent = true,
+                )
+            }
             state.error?.let { error ->
                 Spacer(Modifier.height(20.dp))
                 Text(
