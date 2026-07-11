@@ -16,9 +16,8 @@ import javax.inject.Singleton
 /**
  * Network foundation for Device ID + one-time-code portal pairing.
  *
- * UI integration is intentionally separate: this class owns protocol details,
- * token rotation, expiry, and safe error handling so a future activation screen
- * cannot accidentally treat the visible user code as a permanent credential.
+ * The visible user code is deliberately separate from the private session
+ * secret and the revocable device tokens stored after approval.
  */
 @Singleton
 class PortalPairingRepository @Inject constructor(
@@ -55,10 +54,19 @@ class PortalPairingRepository @Inject constructor(
         }
         require(body.expiresAtEpochSec > nowEpochSec()) { "Portal pairing session is already expired" }
 
+        val code = PortalPairingProtocol.normalizeUserCode(body.userCode)
+        require(code.replace("-", "").length in 4..16) {
+            "Portal returned an invalid user code"
+        }
+        val verificationUri = body.verificationUri.trim()
+        require(verificationUri.startsWith("https://") || BuildConfig.DEBUG) {
+            "Portal pairing address must use HTTPS"
+        }
+
         PortalPairingSession(
             sessionId = body.sessionId,
-            userCode = PortalPairingProtocol.normalizeUserCode(body.userCode),
-            verificationUri = body.verificationUri,
+            userCode = code,
+            verificationUri = verificationUri,
             expiresAtEpochSec = body.expiresAtEpochSec,
             intervalSeconds = PortalPairingProtocol.safePollInterval(body.intervalSeconds),
             sessionSecret = body.sessionSecret,

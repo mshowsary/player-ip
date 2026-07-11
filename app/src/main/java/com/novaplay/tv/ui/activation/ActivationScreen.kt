@@ -1,6 +1,7 @@
 package com.novaplay.tv.ui.activation
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -9,11 +10,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -25,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -43,7 +47,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
@@ -60,7 +63,7 @@ fun ActivationScreen(
     viewModel: ActivationViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val checkNowFocus = remember { FocusRequester() }
+    val primaryActionFocus = remember { FocusRequester() }
     val clipboard = LocalClipboardManager.current
     val isTv = isTvDevice()
     val compact = isCompactWidth()
@@ -69,7 +72,11 @@ fun ActivationScreen(
     LaunchedEffect(Unit) {
         viewModel.activated.collect { onActivated() }
     }
-    LaunchedEffect(Unit) { if (isTv) checkNowFocus.requestFocus() }
+    LaunchedEffect(isTv, state.phase) {
+        if (isTv && state.phase != ActivationPhase.PREPARING) {
+            runCatching { primaryActionFocus.requestFocus() }
+        }
+    }
     LaunchedEffect(copiedLabel) {
         if (copiedLabel != null) {
             delay(2_000)
@@ -90,8 +97,8 @@ fun ActivationScreen(
             .background(MaterialTheme.colorScheme.background)
             .background(
                 Brush.radialGradient(
-                    colors = listOf(accent.copy(alpha = 0.08f), Color.Transparent),
-                    radius = 900f,
+                    colors = listOf(accent.copy(alpha = 0.10f), Color.Transparent),
+                    radius = 1_050f,
                 ),
             )
             .padding(screenPadding()),
@@ -105,131 +112,86 @@ fun ActivationScreen(
 
         Column(
             modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(top = 48.dp, bottom = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "CONNECT THIS DEVICE",
+                text = "SECURE DEVICE PAIRING",
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 3.sp,
             )
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
-                text = "Use managed activation from a provider, or add your own Xtream or M3U playlist.",
+                text = "Connect NovaPlay to your provider",
+                style = MaterialTheme.typography.headlineMedium,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = "Use the one-time code below. Your provider credentials never need to be typed on this device.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(max = 620.dp),
+                modifier = Modifier.widthIn(max = 680.dp),
             )
-            Spacer(Modifier.height(24.dp))
-
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .widthIn(max = if (compact) 520.dp else 680.dp),
-            ) {
-                DeviceCodeCard(
-                    label = "MAC address",
-                    value = state.mac.ifBlank { "··:··:··:··:··:··" },
-                    large = !compact,
-                    onCopy = { copyValue("MAC address", state.mac) },
-                )
-                DeviceCodeCard(
-                    label = "Device key",
-                    value = state.deviceKey.toCharArray().joinToString(" "),
-                    large = false,
-                    accentValue = true,
-                    onCopy = { copyValue("Device key", state.deviceKey) },
-                )
-            }
-
-            Text(
-                text = when (copiedLabel) {
-                    null -> "Tap a device code to copy it"
-                    else -> "$copiedLabel copied"
-                },
-                style = MaterialTheme.typography.labelMedium,
-                color = if (copiedLabel == null) {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                } else {
-                    accent
-                },
-                modifier = Modifier.padding(top = 10.dp),
-            )
-
-            Spacer(Modifier.height(24.dp))
-            Text(
-                text = "Managed activation: visit ${portalDisplayUrl()} and enter the MAC address and device key.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.widthIn(max = 580.dp),
-            )
-            Spacer(Modifier.height(22.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                PulsingDot(modifier = Modifier.size(10.dp))
-                Text(
-                    text = if (state.checking) "Checking…" else "Waiting for managed activation…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Spacer(Modifier.height(22.dp))
+            Spacer(Modifier.height(26.dp))
 
             if (compact) {
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .widthIn(max = 440.dp),
+                        .widthIn(max = 560.dp),
                 ) {
-                    NovaButton(
-                        text = "Check managed activation",
-                        onClick = viewModel::checkNow,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(checkNowFocus),
+                    PairingPanel(
+                        state = state,
+                        copiedLabel = copiedLabel,
+                        onCopyCode = { copyValue("Pairing code", state.userCode) },
+                        onCopyPortal = { copyValue("Portal address", state.verificationUri) },
+                        onPrimaryAction = viewModel::checkNow,
+                        onRefreshCode = viewModel::refreshCode,
+                        primaryActionFocus = primaryActionFocus,
                     )
-                    NovaButton(
-                        text = "Add my own playlist",
-                        onClick = onAddPersonalPlaylist,
-                        prominent = true,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                    StepsPanel()
+                    PersonalPlaylistPanel(onAddPersonalPlaylist)
                 }
             } else {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp),
+                    verticalAlignment = Alignment.Top,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 980.dp),
                 ) {
-                    NovaButton(
-                        text = "Check managed activation",
-                        onClick = viewModel::checkNow,
-                        modifier = Modifier.focusRequester(checkNowFocus),
-                    )
-                    NovaButton(
-                        text = "Add my own playlist",
-                        onClick = onAddPersonalPlaylist,
-                        prominent = true,
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.weight(0.9f),
+                    ) {
+                        StepsPanel()
+                        PersonalPlaylistPanel(onAddPersonalPlaylist)
+                    }
+                    PairingPanel(
+                        state = state,
+                        copiedLabel = copiedLabel,
+                        onCopyCode = { copyValue("Pairing code", state.userCode) },
+                        onCopyPortal = { copyValue("Portal address", state.verificationUri) },
+                        onPrimaryAction = viewModel::checkNow,
+                        onRefreshCode = viewModel::refreshCode,
+                        primaryActionFocus = primaryActionFocus,
+                        modifier = Modifier.weight(1.1f),
                     )
                 }
             }
 
-            state.error?.let { error ->
-                Spacer(Modifier.height(20.dp))
+            if (state.supportId.isNotBlank()) {
                 Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.widthIn(max = 560.dp),
+                    text = "Support ID  ${state.supportId}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 18.dp),
                 )
             }
         }
@@ -237,44 +199,204 @@ fun ActivationScreen(
 }
 
 @Composable
-private fun DeviceCodeCard(
-    label: String,
-    value: String,
-    large: Boolean,
-    accentValue: Boolean = false,
+private fun PairingPanel(
+    state: ActivationUiState,
+    copiedLabel: String?,
+    onCopyCode: () -> Unit,
+    onCopyPortal: () -> Unit,
+    onPrimaryAction: () -> Unit,
+    onRefreshCode: () -> Unit,
+    primaryActionFocus: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.large)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.border.copy(alpha = 0.65f),
+                MaterialTheme.shapes.large,
+            )
+            .padding(20.dp),
+    ) {
+        Text(
+            text = statusTitle(state),
+            style = MaterialTheme.typography.titleLarge,
+        )
+        Text(
+            text = statusBody(state),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (state.userCode.isNotBlank()) {
+            PairingCodeCard(
+                code = state.userCode,
+                onCopy = onCopyCode,
+            )
+            PortalAddressCard(
+                address = state.verificationUri,
+                onCopy = onCopyPortal,
+            )
+        } else {
+            PreparingCodeCard()
+        }
+
+        PairingStatusRow(state)
+
+        Text(
+            text = copiedLabel?.let { "$it copied" } ?: "Select the code or portal address to copy it",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (copiedLabel == null) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.primary
+            },
+        )
+
+        state.error?.let { error ->
+            Text(
+                text = error,
+                style = MaterialTheme.typography.bodySmall,
+                color = if (state.phase == ActivationPhase.WAITING_FOR_APPROVAL ||
+                    state.phase == ActivationPhase.WAITING_FOR_PLAYLIST
+                ) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.error
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.background.copy(alpha = 0.55f),
+                        MaterialTheme.shapes.small,
+                    )
+                    .padding(12.dp),
+            )
+        }
+
+        when (state.phase) {
+            ActivationPhase.PREPARING,
+            ActivationPhase.APPROVED,
+            -> Unit
+
+            ActivationPhase.WAITING_FOR_APPROVAL -> {
+                NovaButton(
+                    text = if (state.checking) "Checking portal…" else "Check now",
+                    onClick = onPrimaryAction,
+                    prominent = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(primaryActionFocus),
+                )
+                NovaButton(
+                    text = "Create a new code",
+                    onClick = onRefreshCode,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            ActivationPhase.WAITING_FOR_PLAYLIST -> {
+                NovaButton(
+                    text = if (state.checking) "Checking assignment…" else "Check for playlist",
+                    onClick = onPrimaryAction,
+                    prominent = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(primaryActionFocus),
+                )
+            }
+
+            ActivationPhase.DENIED,
+            ActivationPhase.EXPIRED,
+            ActivationPhase.ERROR,
+            -> {
+                NovaButton(
+                    text = "Create a new pairing code",
+                    onClick = onRefreshCode,
+                    prominent = true,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(primaryActionFocus),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PairingCodeCard(
+    code: String,
     onCopy: () -> Unit,
 ) {
     NovaClickable(
         onClick = onCopy,
+        focusedScale = 1.02f,
+        shape = MaterialTheme.shapes.medium,
+        containerColor = MaterialTheme.colorScheme.surfaceVariant,
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (large) 108.dp else 88.dp),
-        focusedScale = 1.02f,
+            .heightIn(min = 112.dp),
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+        ) {
+            Text(
+                text = "ONE-TIME CODE",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                letterSpacing = 2.sp,
+            )
+            Spacer(Modifier.height(9.dp))
+            Text(
+                text = code,
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 36.sp,
+                letterSpacing = 3.sp,
+                color = MaterialTheme.colorScheme.primary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PortalAddressCard(
+    address: String,
+    onCopy: () -> Unit,
+) {
+    NovaClickable(
+        onClick = onCopy,
+        focusedScale = 1.015f,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
+                    text = "OPEN ON YOUR PHONE OR COMPUTER",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(5.dp))
                 Text(
-                    text = value,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (large) 32.sp else 23.sp,
-                    letterSpacing = 1.sp,
-                    color = if (accentValue) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
+                    text = displayPortalAddress(address),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -282,16 +404,218 @@ private fun DeviceCodeCard(
             Spacer(Modifier.width(12.dp))
             Icon(
                 imageVector = Icons.Default.ContentCopy,
-                contentDescription = "Copy $label",
+                contentDescription = "Copy portal address",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(22.dp),
             )
         }
     }
 }
 
-private fun portalDisplayUrl(): String =
-    BuildConfig.PORTAL_BASE_URL
-        .removePrefix("https://")
-        .removePrefix("http://")
-        .trimEnd('/')
+@Composable
+private fun PreparingCodeCard() {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(150.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)),
+    ) {
+        PulsingDot(modifier = Modifier.size(12.dp))
+        Spacer(Modifier.height(14.dp))
+        Text(
+            text = "Creating a private pairing session…",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun PairingStatusRow(state: ActivationUiState) {
+    val active = state.phase == ActivationPhase.PREPARING ||
+        state.phase == ActivationPhase.WAITING_FOR_APPROVAL ||
+        state.phase == ActivationPhase.WAITING_FOR_PLAYLIST
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (active) {
+            PulsingDot(modifier = Modifier.size(9.dp))
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(
+                        if (state.phase == ActivationPhase.APPROVED) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
+                    ),
+            )
+        }
+        Text(
+            text = statusLine(state),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (state.phase == ActivationPhase.WAITING_FOR_APPROVAL && state.secondsRemaining > 0L) {
+            Text(
+                text = formatCountdown(state.secondsRemaining),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StepsPanel() {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.large)
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.border.copy(alpha = 0.55f),
+                MaterialTheme.shapes.large,
+            )
+            .padding(20.dp),
+    ) {
+        Text(text = "How to connect", style = MaterialTheme.typography.titleLarge)
+        InstructionRow(
+            number = "1",
+            title = "Open the portal",
+            body = "Use the address displayed beside the code on your phone or computer.",
+        )
+        InstructionRow(
+            number = "2",
+            title = "Enter the one-time code",
+            body = "Sign in to your provider account, choose Add device, then enter the code.",
+        )
+        InstructionRow(
+            number = "3",
+            title = "Approve this device",
+            body = "NovaPlay detects approval automatically and securely downloads assigned playlists.",
+        )
+    }
+}
+
+@Composable
+private fun InstructionRow(
+    number: String,
+    title: String,
+    body: String,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+        ) {
+            Text(
+                text = number,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.titleSmall)
+            Spacer(Modifier.height(3.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PersonalPlaylistPanel(onAddPersonalPlaylist: () -> Unit) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                MaterialTheme.shapes.medium,
+            )
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.border.copy(alpha = 0.45f),
+                MaterialTheme.shapes.medium,
+            )
+            .padding(16.dp),
+    ) {
+        Text(text = "Using your own source?", style = MaterialTheme.typography.titleMedium)
+        Text(
+            text = "Add personal Xtream credentials or an M3U playlist without connecting to a provider portal.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        NovaButton(
+            text = "Add my own playlist",
+            onClick = onAddPersonalPlaylist,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+private fun statusTitle(state: ActivationUiState): String = when (state.phase) {
+    ActivationPhase.PREPARING -> "Preparing your code"
+    ActivationPhase.WAITING_FOR_APPROVAL -> "Pairing code ready"
+    ActivationPhase.WAITING_FOR_PLAYLIST -> "Device connected"
+    ActivationPhase.APPROVED -> "Connection complete"
+    ActivationPhase.DENIED -> "Request declined"
+    ActivationPhase.EXPIRED -> "Code expired"
+    ActivationPhase.ERROR -> "Pairing unavailable"
+}
+
+private fun statusBody(state: ActivationUiState): String = when (state.phase) {
+    ActivationPhase.PREPARING -> "NovaPlay is creating a short-lived private session with the portal."
+    ActivationPhase.WAITING_FOR_APPROVAL ->
+        "Enter this code on the provider portal. It can only be used for this pairing session."
+    ActivationPhase.WAITING_FOR_PLAYLIST ->
+        "Approval succeeded. NovaPlay is waiting for your provider to assign at least one playlist."
+    ActivationPhase.APPROVED -> "The device is connected and your assigned content is being synchronized."
+    ActivationPhase.DENIED -> "The portal declined this connection request."
+    ActivationPhase.EXPIRED -> "For your security, pairing codes stop working after a short time."
+    ActivationPhase.ERROR -> "A secure pairing session could not be created right now."
+}
+
+private fun statusLine(state: ActivationUiState): String = when (state.phase) {
+    ActivationPhase.PREPARING -> "Creating secure session"
+    ActivationPhase.WAITING_FOR_APPROVAL -> if (state.checking) "Checking for approval" else "Waiting for approval"
+    ActivationPhase.WAITING_FOR_PLAYLIST -> if (state.checking) "Checking playlist assignment" else "Waiting for playlist assignment"
+    ActivationPhase.APPROVED -> "Approved"
+    ActivationPhase.DENIED -> "Declined"
+    ActivationPhase.EXPIRED -> "Expired"
+    ActivationPhase.ERROR -> "Not connected"
+}
+
+internal fun formatCountdown(totalSeconds: Long): String {
+    val safe = totalSeconds.coerceAtLeast(0L)
+    val minutes = safe / 60L
+    val seconds = safe % 60L
+    return "%d:%02d".format(minutes, seconds)
+}
+
+internal fun displayPortalAddress(address: String): String = address
+    .removePrefix("https://")
+    .removePrefix("http://")
+    .trimEnd('/')
+    .ifBlank { "Portal address unavailable" }
