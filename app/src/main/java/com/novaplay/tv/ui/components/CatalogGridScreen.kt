@@ -2,6 +2,7 @@ package com.novaplay.tv.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -93,11 +94,10 @@ fun <T : Any> CatalogGridScreen(
 
             when {
                 items.itemCount == 0 && items.loadState.refresh is LoadState.Loading -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(layout.gridSpacingDp.dp)) {
-                        repeat(2) {
-                            PosterGridSkeleton(columns = layout.skeletonColumns)
-                        }
-                    }
+                    ResponsivePosterSkeleton(
+                        posterMinWidthDp = layout.posterMinWidthDp,
+                        spacingDp = layout.gridSpacingDp,
+                    )
                 }
                 items.itemCount == 0 -> {
                     EmptyState(
@@ -169,6 +169,25 @@ fun <T : Any> CatalogGridScreen(
             )
             Spacer(Modifier.width(24.dp))
             gridPane()
+        }
+    }
+}
+
+@Composable
+private fun ResponsivePosterSkeleton(
+    posterMinWidthDp: Int,
+    spacingDp: Int,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val available = maxWidth.value.coerceAtLeast(posterMinWidthDp.toFloat())
+        val columns = (available / (posterMinWidthDp + spacingDp))
+            .toInt()
+            .coerceIn(2, 8)
+
+        Column(verticalArrangement = Arrangement.spacedBy(spacingDp.dp)) {
+            repeat(2) {
+                PosterGridSkeleton(columns = columns, spacingDp = spacingDp)
+            }
         }
     }
 }
