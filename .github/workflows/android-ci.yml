@@ -4,8 +4,11 @@ on:
   push:
     branches:
       - main
-      - "milestone/**"
   pull_request:
+
+concurrency:
+  group: android-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
