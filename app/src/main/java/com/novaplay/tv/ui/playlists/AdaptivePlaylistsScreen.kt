@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -153,9 +154,7 @@ fun AdaptivePlaylistsScreen(
             }
         }
 
-        message?.let { text ->
-            StatusMessage(text = text)
-        }
+        message?.let { StatusMessage(it) }
     }
 
     editorDraft?.let { initial ->
@@ -454,6 +453,8 @@ private fun ValidatedPlaylistEditor(
     val importedFile = draft.url.startsWith("file:")
     val firstFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
+    val screenHeight = LocalConfiguration.current.screenHeightDp.dp
+    val bodyMaxHeight = (screenHeight - 140.dp).coerceIn(220.dp, 680.dp)
 
     fun submit(action: (PlaylistDraft) -> Unit) {
         showValidation = true
@@ -467,15 +468,16 @@ private fun ValidatedPlaylistEditor(
     NovaDialog(
         title = if (editing) "Edit playlist" else "Add playlist",
         onDismiss = onDismiss,
+        maxWidth = 540.dp,
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(13.dp),
             modifier = Modifier
-                .heightIn(max = 640.dp)
+                .heightIn(max = bodyMaxHeight)
                 .verticalScroll(rememberScrollState()),
         ) {
             if (!editing) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     PlaylistTypeChoice(
                         text = "Xtream",
                         selected = draft.type == Playlist.TYPE_XTREAM,
@@ -563,24 +565,23 @@ private fun ValidatedPlaylistEditor(
                 )
             }
 
+            Spacer(Modifier.height(2.dp))
             NovaButton(
                 text = if (busy) "Working…" else "Save and synchronize",
                 onClick = { submit(onSave) },
                 prominent = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NovaButton(
-                    text = "Test connection",
-                    onClick = { submit(onTest) },
-                    modifier = Modifier.weight(1f),
-                )
-                NovaButton(
-                    text = "Cancel",
-                    onClick = onDismiss,
-                    modifier = Modifier.weight(1f),
-                )
-            }
+            NovaButton(
+                text = "Test connection",
+                onClick = { submit(onTest) },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            NovaButton(
+                text = "Cancel",
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
