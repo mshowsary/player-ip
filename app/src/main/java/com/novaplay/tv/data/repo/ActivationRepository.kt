@@ -31,7 +31,7 @@ class ActivationRepository @Inject constructor(
 
     suspend fun checkAndAttach(): ActivationCheck {
         if (BuildConfig.MOCK_ACTIVATION) {
-            attach(MockPortal.playlists)
+            attachManagedPlaylists(MockPortal.playlists)
             return ActivationCheck.Activated(MockPortal.playlists.size)
         }
 
@@ -43,7 +43,7 @@ class ActivationRepository @Inject constructor(
                     if (playlists.isEmpty()) {
                         ActivationCheck.NotRegistered
                     } else {
-                        attach(playlists)
+                        attachManagedPlaylists(playlists)
                         ActivationCheck.Activated(playlists.size)
                     }
                 },
@@ -66,7 +66,7 @@ class ActivationRepository @Inject constructor(
                 if (playlists.isEmpty()) {
                     ActivationCheck.NotRegistered
                 } else {
-                    attach(playlists)
+                    attachManagedPlaylists(playlists)
                     ActivationCheck.Activated(playlists.size)
                 }
             }
@@ -76,9 +76,14 @@ class ActivationRepository @Inject constructor(
         }
     }
 
-    // Upsert by portal id: re-polling refreshes credentials/names without
-    // touching already-synced content or the active selection.
-    private suspend fun attach(dtos: List<PortalPlaylistDto>) {
+    /**
+     * Atomically upserts a managed assignment received during secure pairing.
+     * Credentials are sealed before Room sees them and existing synced content
+     * or the active selection is preserved.
+     */
+    suspend fun attachManagedPlaylists(dtos: List<PortalPlaylistDto>): Int {
+        if (dtos.isEmpty()) return 0
+
         val dao = db.playlistDao()
         db.withTransaction {
             for (dto in dtos) {
@@ -110,5 +115,6 @@ class ActivationRepository @Inject constructor(
                 dao.getByPortalId(dtos.first().id)?.let { dao.setActive(it.id) }
             }
         }
+        return dtos.size
     }
 }
