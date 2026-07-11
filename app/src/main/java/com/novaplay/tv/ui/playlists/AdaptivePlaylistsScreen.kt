@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -281,6 +280,7 @@ private fun PlaylistHeader(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TouchPlaylistCard(
     playlist: Playlist,
@@ -425,7 +425,12 @@ private fun TvPlaylistActions(
     NovaDialog(title = playlist.name, onDismiss = onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (!active) {
-                NovaButton(text = "Set active", onClick = onSetActive, prominent = true, modifier = Modifier.fillMaxWidth())
+                NovaButton(
+                    text = "Set active",
+                    onClick = onSetActive,
+                    prominent = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
             NovaButton(text = "Synchronize now", onClick = onSync, modifier = Modifier.fillMaxWidth())
             if (personal) NovaButton(text = "Edit", onClick = onEdit, modifier = Modifier.fillMaxWidth())
