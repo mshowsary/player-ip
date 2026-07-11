@@ -40,6 +40,8 @@ import com.novaplay.tv.data.prefs.LastSyncSummary
 import com.novaplay.tv.data.repo.AppDiagnostics
 import com.novaplay.tv.data.repo.AppDiagnosticsRepository
 import com.novaplay.tv.data.repo.SyncStatus
+import com.novaplay.tv.ui.components.NovaButton
+import com.novaplay.tv.ui.theme.isCompactWidth
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -55,6 +57,7 @@ fun PerformanceSettingsPanel(
     onClearCache: () -> Unit,
     onRefreshDiagnostics: () -> Unit,
     onCopyDiagnostics: () -> Unit,
+    firstFocusRequester: FocusRequester? = null,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -84,11 +87,12 @@ fun PerformanceSettingsPanel(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            BackgroundSyncMode.entries.forEach { mode ->
+            BackgroundSyncMode.entries.forEachIndexed { index, mode ->
                 PerformanceChoice(
                     text = mode.label,
                     selected = mode == backgroundMode,
                     onClick = { onBackgroundMode(mode) },
+                    focusRequester = firstFocusRequester.takeIf { index == 0 },
                 )
             }
         }
@@ -132,7 +136,7 @@ fun PerformanceSettingsPanel(
             )
         }
 
-        com.novaplay.tv.ui.components.NovaButton(
+        NovaButton(
             text = when (syncStatus) {
                 is SyncStatus.Syncing -> "Syncing ${syncStatus.step}…"
                 else -> "Re-sync active playlist"
@@ -148,7 +152,7 @@ fun PerformanceSettingsPanel(
                 color = MaterialTheme.colorScheme.error,
             )
         }
-        com.novaplay.tv.ui.components.NovaButton(
+        NovaButton(
             text = if (cacheCleared) "Image cache cleared ✓" else "Clear image cache",
             onClick = onClearCache,
             modifier = Modifier.fillMaxWidth(),
@@ -173,17 +177,32 @@ fun PerformanceSettingsPanel(
             "${diagnostics.liveChannels} live · ${diagnostics.movies} movies · ${diagnostics.series} series",
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-            com.novaplay.tv.ui.components.NovaButton(
-                text = "Refresh health",
-                onClick = onRefreshDiagnostics,
-                modifier = Modifier.weight(1f),
-            )
-            com.novaplay.tv.ui.components.NovaButton(
-                text = "Copy support info",
-                onClick = onCopyDiagnostics,
-                modifier = Modifier.weight(1f),
-            )
+        if (isCompactWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                NovaButton(
+                    text = "Refresh health",
+                    onClick = onRefreshDiagnostics,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                NovaButton(
+                    text = "Copy support info",
+                    onClick = onCopyDiagnostics,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                NovaButton(
+                    text = "Refresh health",
+                    onClick = onRefreshDiagnostics,
+                    modifier = Modifier.weight(1f),
+                )
+                NovaButton(
+                    text = "Copy support info",
+                    onClick = onCopyDiagnostics,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
         Text(
             text = message ?: "Support info excludes playlist URLs, credentials, tokens and device identifiers.",
@@ -222,9 +241,11 @@ private fun PerformanceChoice(
     text: String,
     selected: Boolean,
     onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val requester = remember { FocusRequester() }
+    val localRequester = remember { FocusRequester() }
+    val requester = focusRequester ?: localRequester
     val shape = RoundedCornerShape(50)
     val background = when {
         selected -> MaterialTheme.colorScheme.surfaceVariant
