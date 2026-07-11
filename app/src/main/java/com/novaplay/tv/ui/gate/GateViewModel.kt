@@ -2,7 +2,9 @@ package com.novaplay.tv.ui.gate
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.novaplay.tv.data.repo.ActivationRepository
 import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.repo.PortalPairingRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.security.PlaylistSecrets
 import com.novaplay.tv.di.ApplicationScope
@@ -20,13 +22,15 @@ sealed interface GateState {
     data object Ready : GateState
 }
 
-// Launch gate: no playlist -> activation; playlist -> home, with a silent
-// background refresh when the last sync is older than 12 h.
+// Launch gate: no playlist -> activation; playlist -> home, with silent
+// catalogue and managed-policy refreshes that never block navigation.
 @HiltViewModel
 class GateViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val syncRepository: SyncRepository,
     private val playlistSecrets: PlaylistSecrets,
+    private val activationRepository: ActivationRepository,
+    private val portalPairingRepository: PortalPairingRepository,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -45,6 +49,9 @@ class GateViewModel @Inject constructor(
             } else {
                 _state.value = GateState.Ready
                 appScope.launch { syncRepository.syncIfStale(playlist) }
+                if (portalPairingRepository.hasStoredSession()) {
+                    appScope.launch { activationRepository.checkAndAttach() }
+                }
             }
         }
     }

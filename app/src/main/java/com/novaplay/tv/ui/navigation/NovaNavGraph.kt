@@ -18,6 +18,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedFeature
+import com.novaplay.tv.ui.access.ManagedAccessBlockedScreen
+import com.novaplay.tv.ui.access.ManagedAccessViewModel
 import com.novaplay.tv.ui.activation.ActivationScreen
 import com.novaplay.tv.ui.components.NovaBackdrop
 import com.novaplay.tv.ui.gate.GateState
@@ -39,6 +43,8 @@ fun NovaNavGraph(
     onImmersiveChanged: (Boolean) -> Unit = {},
 ) {
     val navController = rememberNavController()
+    val accessViewModel: ManagedAccessViewModel = hiltViewModel()
+    val policy by accessViewModel.policy.collectAsStateWithLifecycle()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
     val immersive = isTvDevice() || currentRoute == Routes.LIVE_PLAYER || currentRoute == Routes.VOD_PLAYER
@@ -48,6 +54,7 @@ fun NovaNavGraph(
     NovaBackdrop {
         AdaptiveAppShell(
             currentRoute = currentRoute,
+            policy = policy,
             onNavigate = { route -> navController.navigateTopLevel(route) },
         ) { shellModifier ->
             NavHost(
@@ -85,11 +92,17 @@ fun NovaNavGraph(
                 }
 
                 composable(Routes.LIVE) {
-                    ResponsiveLiveScreen(
-                        onPlayChannel = { channelId, categoryId ->
-                            navController.navigate(Routes.livePlayer(channelId, categoryId))
-                        },
-                    )
+                    ManagedDestination(
+                        feature = ManagedFeature.LIVE,
+                        policy = policy,
+                        navController = navController,
+                    ) {
+                        ResponsiveLiveScreen(
+                            onPlayChannel = { channelId, categoryId ->
+                                navController.navigate(Routes.livePlayer(channelId, categoryId))
+                            },
+                        )
+                    }
                 }
 
                 composable(
@@ -102,45 +115,73 @@ fun NovaNavGraph(
                         },
                     ),
                 ) {
-                    LivePlayerScreen()
+                    ManagedDestination(
+                        feature = ManagedFeature.LIVE,
+                        policy = policy,
+                        navController = navController,
+                    ) { LivePlayerScreen() }
                 }
 
                 composable(Routes.MOVIES) {
-                    MoviesScreen(
-                        onOpenMovie = { movieId -> navController.navigate(Routes.movieDetails(movieId)) },
-                    )
+                    ManagedDestination(
+                        feature = ManagedFeature.MOVIES,
+                        policy = policy,
+                        navController = navController,
+                    ) {
+                        MoviesScreen(
+                            onOpenMovie = { movieId -> navController.navigate(Routes.movieDetails(movieId)) },
+                        )
+                    }
                 }
 
                 composable(
                     route = Routes.MOVIE_DETAILS,
                     arguments = listOf(navArgument("movieId") { type = NavType.LongType }),
                 ) {
-                    MovieDetailsScreen(
-                        onPlay = { movieId, resume ->
-                            navController.navigate(
-                                Routes.vodPlayer(Routes.MEDIA_TYPE_MOVIE, movieId, resume),
-                            )
-                        },
-                    )
+                    ManagedDestination(
+                        feature = ManagedFeature.MOVIES,
+                        policy = policy,
+                        navController = navController,
+                    ) {
+                        MovieDetailsScreen(
+                            onPlay = { movieId, resume ->
+                                navController.navigate(
+                                    Routes.vodPlayer(Routes.MEDIA_TYPE_MOVIE, movieId, resume),
+                                )
+                            },
+                        )
+                    }
                 }
 
                 composable(Routes.SERIES) {
-                    SeriesScreen(
-                        onOpenSeries = { seriesId -> navController.navigate(Routes.seriesDetails(seriesId)) },
-                    )
+                    ManagedDestination(
+                        feature = ManagedFeature.SERIES,
+                        policy = policy,
+                        navController = navController,
+                    ) {
+                        SeriesScreen(
+                            onOpenSeries = { seriesId -> navController.navigate(Routes.seriesDetails(seriesId)) },
+                        )
+                    }
                 }
 
                 composable(
                     route = Routes.SERIES_DETAILS,
                     arguments = listOf(navArgument("seriesId") { type = NavType.LongType }),
                 ) {
-                    SeriesDetailsScreen(
-                        onPlayEpisode = { episodeId, resume ->
-                            navController.navigate(
-                                Routes.vodPlayer(Routes.MEDIA_TYPE_EPISODE, episodeId, resume),
-                            )
-                        },
-                    )
+                    ManagedDestination(
+                        feature = ManagedFeature.SERIES,
+                        policy = policy,
+                        navController = navController,
+                    ) {
+                        SeriesDetailsScreen(
+                            onPlayEpisode = { episodeId, resume ->
+                                navController.navigate(
+                                    Routes.vodPlayer(Routes.MEDIA_TYPE_EPISODE, episodeId, resume),
+                                )
+                            },
+                        )
+                    }
                 }
 
                 composable(
@@ -153,8 +194,17 @@ fun NovaNavGraph(
                             defaultValue = false
                         },
                     ),
-                ) {
-                    VodPlayerScreen()
+                ) { entry ->
+                    val feature = if (entry.arguments?.getString("mediaType") == Routes.MEDIA_TYPE_EPISODE) {
+                        ManagedFeature.SERIES
+                    } else {
+                        ManagedFeature.MOVIES
+                    }
+                    ManagedDestination(
+                        feature = feature,
+                        policy = policy,
+                        navController = navController,
+                    ) { VodPlayerScreen() }
                 }
 
                 composable(Routes.PLAYLISTS) {
@@ -183,6 +233,25 @@ fun NovaNavGraph(
                 composable(Routes.SETTINGS) { PolishedSettingsScreen() }
             }
         }
+    }
+}
+
+@Composable
+private fun ManagedDestination(
+    feature: ManagedFeature,
+    policy: ManagedAccessPolicy,
+    navController: NavHostController,
+    content: @Composable () -> Unit,
+) {
+    if (policy.allows(feature)) {
+        content()
+    } else {
+        ManagedAccessBlockedScreen(
+            feature = feature,
+            policy = policy,
+            onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
+            onOpenSettings = { navController.navigateTopLevel(Routes.SETTINGS) },
+        )
     }
 }
 

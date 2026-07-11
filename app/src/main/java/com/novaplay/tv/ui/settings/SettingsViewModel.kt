@@ -14,7 +14,12 @@ import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleSize
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.prefs.UiModePreference
+import com.novaplay.tv.data.repo.ActivationCheck
+import com.novaplay.tv.data.repo.ActivationRepository
 import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.repo.DebugManagedPolicyPreset
+import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.di.ApplicationScope
@@ -44,6 +49,8 @@ class SettingsViewModel @Inject constructor(
     private val prefs: AppPreferences,
     private val syncRepository: SyncRepository,
     private val contentRepository: ContentRepository,
+    private val activationRepository: ActivationRepository,
+    private val managedAccessRepository: ManagedAccessRepository,
     deviceIdentity: DeviceIdentity,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
@@ -58,12 +65,16 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, LiveFormat.AUTO)
 
     val syncStatus: StateFlow<SyncStatus> = syncRepository.status
+    val managedAccess: StateFlow<ManagedAccessPolicy> = managedAccessRepository.policy
 
     private val _deviceInfo = MutableStateFlow(DeviceInfo())
     val deviceInfo: StateFlow<DeviceInfo> = _deviceInfo.asStateFlow()
 
     private val _cacheCleared = MutableStateFlow(false)
     val cacheCleared: StateFlow<Boolean> = _cacheCleared.asStateFlow()
+
+    private val _managedRefreshMessage = MutableStateFlow<String?>(null)
+    val managedRefreshMessage: StateFlow<String?> = _managedRefreshMessage.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -105,5 +116,23 @@ class SettingsViewModel @Inject constructor(
         appScope.launch {
             contentRepository.getActivePlaylist()?.let { syncRepository.sync(it) }
         }
+    }
+
+    fun refreshManagedAccess() {
+        viewModelScope.launch {
+            _managedRefreshMessage.value = "Checking managed access…"
+            _managedRefreshMessage.value = when (val result = activationRepository.checkAndAttach()) {
+                is ActivationCheck.Activated -> "Managed access refreshed"
+                ActivationCheck.NotRegistered -> "Connected, but no managed playlist is assigned"
+                ActivationCheck.KeyMismatch -> "The portal session is no longer valid"
+                is ActivationCheck.Failure -> "Could not refresh managed access"
+            }
+            delay(2_800)
+            _managedRefreshMessage.value = null
+        }
+    }
+
+    fun setDebugManagedPolicy(preset: DebugManagedPolicyPreset) {
+        if (BuildConfig.DEBUG) managedAccessRepository.setDebugPreset(preset)
     }
 }

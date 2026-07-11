@@ -24,6 +24,7 @@ class PortalPairingRepository @Inject constructor(
     private val api: PortalApi,
     private val deviceIdentity: DeviceIdentity,
     private val tokenStore: PortalTokenStore,
+    private val managedAccessRepository: ManagedAccessRepository,
 ) {
     suspend fun createSession(): Result<PortalPairingSession> = runCatching {
         val identity = deviceIdentity.get()
@@ -86,7 +87,8 @@ class PortalPairingRepository @Inject constructor(
                 accessTokenExpiresAtEpochSec = now + 3_600,
             )
             tokenStore.save(tokens)
-            return PortalPairingPoll.Approved(tokens, MockPortal.playlists)
+            managedAccessRepository.applyPortalPolicy(MockPortal.policy)
+            return PortalPairingPoll.Approved(tokens, MockPortal.playlists, MockPortal.policy)
         }
 
         val response = try {
@@ -114,17 +116,24 @@ class PortalPairingRepository @Inject constructor(
             nowEpochSec = now,
             currentIntervalSeconds = session.intervalSeconds,
         )
-        if (result is PortalPairingPoll.Approved) tokenStore.save(result.tokens)
+        if (result is PortalPairingPoll.Approved) {
+            tokenStore.save(result.tokens)
+            managedAccessRepository.applyPortalPolicy(result.policy)
+        }
         return result
     }
 
     suspend fun authorizedPlaylists(): Result<List<PortalPlaylistDto>> = runCatching {
-        if (BuildConfig.MOCK_ACTIVATION) return@runCatching MockPortal.playlists
+        if (BuildConfig.MOCK_ACTIVATION) {
+            managedAccessRepository.applyPortalPolicy(MockPortal.policy)
+            return@runCatching MockPortal.playlists
+        }
 
         val identity = deviceIdentity.get()
         var tokens = tokenStore.load() ?: error("This device is not paired")
         require(tokens.deviceId == identity.deviceId) {
             tokenStore.clear()
+            managedAccessRepository.clear()
             "Portal session belongs to another installation"
         }
 
@@ -137,19 +146,27 @@ class PortalPairingRepository @Inject constructor(
             tokens = refresh(tokens)
             val retry = api.getAuthorizedPlaylists("Bearer ${tokens.accessToken}")
             check(retry.isSuccessful) { "Portal authorization failed: HTTP ${retry.code()}" }
-            return@runCatching retry.body()?.playlists.orEmpty()
+            val body = retry.body()
+            managedAccessRepository.applyPortalPolicy(body?.policy)
+            return@runCatching body?.playlists.orEmpty()
         }
         check(response.isSuccessful) { "Portal request failed: HTTP ${response.code()}" }
-        response.body()?.playlists.orEmpty()
+        val body = response.body()
+        managedAccessRepository.applyPortalPolicy(body?.policy)
+        body?.playlists.orEmpty()
     }
 
     fun hasStoredSession(): Boolean = tokenStore.load() != null
 
-    fun disconnect() = tokenStore.clear()
+    fun disconnect() {
+        tokenStore.clear()
+        managedAccessRepository.clear()
+    }
 
     private suspend fun refresh(current: PortalTokens): PortalTokens {
         val refreshToken = current.refreshToken ?: run {
             tokenStore.clear()
+            managedAccessRepository.clear()
             error("Portal session expired; pair this device again")
         }
         val response = api.refreshDeviceToken(
@@ -157,6 +174,7 @@ class PortalPairingRepository @Inject constructor(
         )
         if (response.code() == 401 || response.code() == 403) {
             tokenStore.clear()
+            managedAccessRepository.clear()
             error("Portal session was revoked; pair this device again")
         }
         check(response.isSuccessful) { "Portal token refresh failed: HTTP ${response.code()}" }

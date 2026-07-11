@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.theme.WindowWidthClass
 import com.novaplay.tv.ui.theme.appLayoutInfo
@@ -36,17 +38,23 @@ private data class ShellDestination(
     val route: String,
     val label: String,
     val icon: ImageVector,
+    val managedFeature: ManagedFeature? = null,
 )
 
 private val topLevelDestinations = listOf(
     ShellDestination(Routes.HOME, "Home", Icons.Default.Home),
-    ShellDestination(Routes.LIVE, "Live", Icons.Default.LiveTv),
-    ShellDestination(Routes.MOVIES, "Movies", Icons.Default.Movie),
-    ShellDestination(Routes.SERIES, "Series", Icons.Default.VideoLibrary),
+    ShellDestination(Routes.LIVE, "Live", Icons.Default.LiveTv, ManagedFeature.LIVE),
+    ShellDestination(Routes.MOVIES, "Movies", Icons.Default.Movie, ManagedFeature.MOVIES),
+    ShellDestination(Routes.SERIES, "Series", Icons.Default.VideoLibrary, ManagedFeature.SERIES),
     ShellDestination(Routes.SETTINGS, "Settings", Icons.Default.Settings),
 )
 
 fun isTopLevelRoute(route: String?): Boolean = topLevelDestinations.any { it.route == route }
+
+private fun visibleDestinations(policy: ManagedAccessPolicy): List<ShellDestination> =
+    topLevelDestinations.filter { destination ->
+        destination.managedFeature?.let(policy::allows) ?: true
+    }
 
 /**
  * TV keeps the familiar full-screen, focus-first experience. Touch devices get
@@ -56,6 +64,7 @@ fun isTopLevelRoute(route: String?): Boolean = topLevelDestinations.any { it.rou
 @Composable
 fun AdaptiveAppShell(
     currentRoute: String?,
+    policy: ManagedAccessPolicy,
     onNavigate: (String) -> Unit,
     content: @Composable (Modifier) -> Unit,
 ) {
@@ -64,15 +73,21 @@ fun AdaptiveAppShell(
         return
     }
 
+    val destinations = visibleDestinations(policy)
     val widthClass = appLayoutInfo().widthClass
     if (widthClass == WindowWidthClass.COMPACT) {
         Column(modifier = Modifier.fillMaxSize()) {
             content(Modifier.weight(1f).fillMaxWidth())
-            TouchBottomBar(currentRoute = currentRoute, onNavigate = onNavigate)
+            TouchBottomBar(
+                destinations = destinations,
+                currentRoute = currentRoute,
+                onNavigate = onNavigate,
+            )
         }
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
             TouchNavigationRail(
+                destinations = destinations,
                 currentRoute = currentRoute,
                 expanded = widthClass == WindowWidthClass.EXPANDED,
                 onNavigate = onNavigate,
@@ -84,6 +99,7 @@ fun AdaptiveAppShell(
 
 @Composable
 private fun TouchBottomBar(
+    destinations: List<ShellDestination>,
     currentRoute: String?,
     onNavigate: (String) -> Unit,
 ) {
@@ -96,7 +112,7 @@ private fun TouchBottomBar(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f))
             .padding(horizontal = 6.dp, vertical = 6.dp),
     ) {
-        topLevelDestinations.forEach { destination ->
+        destinations.forEach { destination ->
             ShellButton(
                 destination = destination,
                 selected = currentRoute == destination.route,
@@ -111,6 +127,7 @@ private fun TouchBottomBar(
 
 @Composable
 private fun TouchNavigationRail(
+    destinations: List<ShellDestination>,
     currentRoute: String?,
     expanded: Boolean,
     onNavigate: (String) -> Unit,
@@ -124,7 +141,7 @@ private fun TouchNavigationRail(
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.97f))
             .padding(horizontal = if (expanded) 12.dp else 8.dp, vertical = 18.dp),
     ) {
-        topLevelDestinations.forEachIndexed { index, destination ->
+        destinations.forEachIndexed { index, destination ->
             ShellButton(
                 destination = destination,
                 selected = currentRoute == destination.route,
@@ -133,7 +150,7 @@ private fun TouchNavigationRail(
                 onClick = { onNavigate(destination.route) },
                 modifier = Modifier.fillMaxWidth(),
             )
-            if (index != topLevelDestinations.lastIndex) Spacer(Modifier.height(8.dp))
+            if (index != destinations.lastIndex) Spacer(Modifier.height(8.dp))
         }
     }
 }
