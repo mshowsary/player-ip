@@ -46,25 +46,29 @@ object PortalPairingProtocol {
         deviceId: String,
         nowEpochSec: Long,
         currentIntervalSeconds: Int,
-    ): PortalPairingPoll = when (dto.status.trim().lowercase()) {
-        "pending" -> PortalPairingPoll.Pending(safePollInterval(currentIntervalSeconds))
-        "slow_down" -> PortalPairingPoll.SlowDown(slowDownInterval(currentIntervalSeconds))
-        "denied", "rejected" -> PortalPairingPoll.Denied
-        "expired" -> PortalPairingPoll.Expired
-        "approved" -> {
-            val access = dto.accessToken?.takeIf { it.isNotBlank() }
-                ?: return PortalPairingPoll.Failure("Portal approval did not include a device token")
-            val expiresIn = dto.expiresInSeconds?.coerceAtLeast(60L) ?: 3_600L
-            PortalPairingPoll.Approved(
-                tokens = PortalTokens(
-                    deviceId = deviceId,
-                    accessToken = access,
-                    refreshToken = dto.refreshToken?.takeIf { it.isNotBlank() },
-                    accessTokenExpiresAtEpochSec = nowEpochSec + expiresIn,
-                ),
-                playlists = dto.playlists,
-            )
+    ): PortalPairingPoll {
+        return when (dto.status.trim().lowercase()) {
+            "pending" -> PortalPairingPoll.Pending(safePollInterval(currentIntervalSeconds))
+            "slow_down" -> PortalPairingPoll.SlowDown(slowDownInterval(currentIntervalSeconds))
+            "denied", "rejected" -> PortalPairingPoll.Denied
+            "expired" -> PortalPairingPoll.Expired
+            "approved" -> {
+                val access = dto.accessToken?.takeIf { it.isNotBlank() }
+                    ?: return PortalPairingPoll.Failure(
+                        "Portal approval did not include a device token",
+                    )
+                val expiresIn = dto.expiresInSeconds?.coerceAtLeast(60L) ?: 3_600L
+                PortalPairingPoll.Approved(
+                    tokens = PortalTokens(
+                        deviceId = deviceId,
+                        accessToken = access,
+                        refreshToken = dto.refreshToken?.takeIf { it.isNotBlank() },
+                        accessTokenExpiresAtEpochSec = nowEpochSec + expiresIn,
+                    ),
+                    playlists = dto.playlists,
+                )
+            }
+            else -> PortalPairingPoll.Failure("Unknown portal pairing status")
         }
-        else -> PortalPairingPoll.Failure("Unknown portal pairing status")
     }
 }
