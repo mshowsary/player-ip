@@ -72,8 +72,8 @@ class M3uParser @Inject constructor(
 
     private suspend fun parseReader(reader: BufferedReader, onEntry: suspend (M3uEntry) -> Unit) {
         var pending: PendingEntry? = null
-        reader.lineSequence().forEach { rawLine ->
-            val line = rawLine.trim()
+        while (true) {
+            val line = reader.readLine()?.trim() ?: break
             when {
                 line.isEmpty() || line.startsWith("#EXTM3U") -> Unit
                 line.startsWith("#EXTINF") -> pending = parseExtInf(line)
