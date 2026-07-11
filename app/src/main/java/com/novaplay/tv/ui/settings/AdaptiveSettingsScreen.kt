@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -318,7 +319,7 @@ private fun DeviceCard(info: DeviceInfo) {
 private fun SettingsCard(
     title: String,
     description: String,
-    content: @Composable Column.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -331,15 +332,8 @@ private fun SettingsCard(
                 shape = MaterialTheme.shapes.medium,
             )
             .padding(18.dp),
-    ) {
-        Text(text = title, style = MaterialTheme.typography.titleLarge)
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        content()
-    }
+        content = content,
+    )
 }
 
 @OptIn(ExperimentalLayoutApi::class)
