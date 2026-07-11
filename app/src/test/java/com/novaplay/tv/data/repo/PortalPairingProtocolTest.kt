@@ -27,17 +27,17 @@ class PortalPairingProtocolTest {
                 status = "approved",
                 accessToken = "access",
                 refreshToken = "refresh",
-                expiresInSeconds = 900,
+                expiresInSeconds = 900L,
             ),
             deviceId = "device-1",
-            nowEpochSec = 1_000,
+            nowEpochSec = 1_000L,
             currentIntervalSeconds = 5,
         )
 
         assertTrue(result is PortalPairingPoll.Approved)
         val approved = result as PortalPairingPoll.Approved
         assertEquals("device-1", approved.tokens.deviceId)
-        assertEquals(1_900, approved.tokens.accessTokenExpiresAtEpochSec)
+        assertEquals(1_900L, approved.tokens.accessTokenExpiresAtEpochSec)
     }
 
     @Test
@@ -45,7 +45,7 @@ class PortalPairingProtocolTest {
         val result = PortalPairingProtocol.mapSuccessfulStatus(
             dto = PairingStatusDto(status = "approved"),
             deviceId = "device-1",
-            nowEpochSec = 1_000,
+            nowEpochSec = 1_000L,
             currentIntervalSeconds = 5,
         )
 
@@ -64,7 +64,7 @@ class PortalPairingProtocolTest {
         PortalPairingProtocol.mapSuccessfulStatus(
             dto = PairingStatusDto(status = status),
             deviceId = "device",
-            nowEpochSec = 0,
+            nowEpochSec = 0L,
             currentIntervalSeconds = 5,
         )
 }
