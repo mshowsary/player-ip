@@ -70,7 +70,7 @@ class SeriesDetailsViewModel @Inject constructor(
 
     val progressByEpisode: StateFlow<Map<Long, WatchProgress>> =
         contentRepository.watchProgressForSeries(seriesId)
-            .map { list -> list.associateBy { it.mediaId } }
+            .map { list -> list.associateBy { it.remoteId } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     private val _selectedSeason = MutableStateFlow<Int?>(null)
@@ -205,13 +205,14 @@ fun SeriesDetailsScreen(
                     }
                     else -> items(count = episodes.size, key = { episodes[it].id }) { index ->
                         val episode = episodes[index]
+                        val progress = progressByEpisode[episode.remoteEpisodeId]
                         EpisodeRow(
                             episode = episode,
-                            progress = progressByEpisode[episode.id],
+                            progress = progress,
                             onClick = {
                                 onPlayEpisode(
                                     episode.id,
-                                    progressByEpisode[episode.id].isEpisodeResumable(),
+                                    progress.isEpisodeResumable(),
                                 )
                             },
                         )
@@ -299,13 +300,14 @@ fun SeriesDetailsScreen(
                         ) {
                             items(count = episodes.size, key = { episodes[it].id }) { index ->
                                 val episode = episodes[index]
+                                val progress = progressByEpisode[episode.remoteEpisodeId]
                                 EpisodeRow(
                                     episode = episode,
-                                    progress = progressByEpisode[episode.id],
+                                    progress = progress,
                                     onClick = {
                                         onPlayEpisode(
                                             episode.id,
-                                            progressByEpisode[episode.id].isEpisodeResumable(),
+                                            progress.isEpisodeResumable(),
                                         )
                                     },
                                 )
