@@ -28,10 +28,10 @@ import com.novaplay.tv.ui.live.ResponsiveLiveScreen
 import com.novaplay.tv.ui.movies.MovieDetailsScreen
 import com.novaplay.tv.ui.movies.MoviesScreen
 import com.novaplay.tv.ui.player.VodPlayerScreen
-import com.novaplay.tv.ui.playlists.PlaylistsScreen
+import com.novaplay.tv.ui.playlists.AdaptivePlaylistsScreen
 import com.novaplay.tv.ui.series.SeriesDetailsScreen
 import com.novaplay.tv.ui.series.SeriesScreen
-import com.novaplay.tv.ui.settings.SettingsScreen
+import com.novaplay.tv.ui.settings.AdaptiveSettingsScreen
 import com.novaplay.tv.ui.theme.isTvDevice
 
 @Composable
@@ -54,7 +54,6 @@ fun NovaNavGraph(
                 navController = navController,
                 startDestination = Routes.GATE,
                 modifier = shellModifier,
-                // Quick fades — snappy on low-end boxes, no sliding chrome.
                 enterTransition = { fadeIn(tween(220)) },
                 exitTransition = { fadeOut(tween(150)) },
                 popEnterTransition = { fadeIn(tween(220)) },
@@ -159,7 +158,7 @@ fun NovaNavGraph(
                 }
 
                 composable(Routes.PLAYLISTS) {
-                    PlaylistsScreen(
+                    AdaptivePlaylistsScreen(
                         onAllPlaylistsRemoved = {
                             navController.navigate(Routes.ACTIVATION) {
                                 popUpTo(0) { inclusive = true }
@@ -169,7 +168,7 @@ fun NovaNavGraph(
                 }
 
                 composable(Routes.PLAYLISTS_SETUP) {
-                    PlaylistsScreen(
+                    AdaptivePlaylistsScreen(
                         onAllPlaylistsRemoved = {
                             navController.popBackStack()
                         },
@@ -181,7 +180,7 @@ fun NovaNavGraph(
                     )
                 }
 
-                composable(Routes.SETTINGS) { SettingsScreen() }
+                composable(Routes.SETTINGS) { AdaptiveSettingsScreen() }
             }
         }
     }
