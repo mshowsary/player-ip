@@ -4,18 +4,19 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -38,7 +39,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -53,7 +54,8 @@ import com.novaplay.tv.ui.components.PulsingDot
 import com.novaplay.tv.ui.theme.NovaAccent
 import com.novaplay.tv.ui.theme.NovaAccentGradient
 import com.novaplay.tv.ui.theme.NovaGlassHighlight
-import com.novaplay.tv.ui.theme.isCompactWidth
+import com.novaplay.tv.ui.theme.WindowWidthClass
+import com.novaplay.tv.ui.theme.appLayoutInfo
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 import kotlinx.coroutines.delay
@@ -64,9 +66,9 @@ import java.util.Locale
 private data class HomeCard(
     val label: String,
     val icon: ImageVector,
+    val onClick: () -> Unit,
 )
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun HomeScreen(
     onOpenLive: () -> Unit,
@@ -80,87 +82,103 @@ fun HomeScreen(
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val liveFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
+    val layoutInfo = appLayoutInfo()
 
-    LaunchedEffect(Unit) { if (isTv) liveFocus.requestFocus() }
+    val cards = remember(onOpenLive, onOpenMovies, onOpenSeries, onOpenPlaylists, onOpenSettings) {
+        listOf(
+            HomeCard("Live TV", Icons.Default.LiveTv, onOpenLive),
+            HomeCard("Movies", Icons.Default.Movie, onOpenMovies),
+            HomeCard("Series", Icons.Default.VideoLibrary, onOpenSeries),
+            HomeCard("Playlists", Icons.Default.SwapHoriz, onOpenPlaylists),
+            HomeCard("Settings", Icons.Default.Settings, onOpenSettings),
+        )
+    }
+
+    LaunchedEffect(isTv) { if (isTv) liveFocus.requestFocus() }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(screenPadding()),
     ) {
-        // Header: identity left, status right — small and subdued.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Gradient wordmark — the brand moment of the screen.
-            Text(
-                text = stringResource(R.string.app_name).uppercase(),
-                style = TextStyle(
-                    brush = NovaAccentGradient,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 5.sp,
-                ),
-            )
-            Spacer(Modifier.weight(1f))
-            Column(horizontalAlignment = Alignment.End) {
-                val compact = isCompactWidth()
-                Row(verticalAlignment = Alignment.CenterVertically) {
+        if (layoutInfo.widthClass == WindowWidthClass.COMPACT) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Wordmark()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
                     playlist?.let { active ->
                         Text(
                             text = active.name,
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        // Expiry doesn't fit next to the wordmark on phones.
-                        if (!compact) {
-                            active.expiryEpochSec?.let { expiry ->
-                                Text(
-                                    text = "  ·  expires ${formatDate(expiry * 1000)}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                        Text(
-                            text = "  ·  ",
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
                         )
                     }
                     Clock()
                 }
             }
-        }
-
-        // The app's face: one confident row of five cards. Cards shrink to
-        // the available width (landscape phones are narrower than TVs) so
-        // the row never wraps or clips; tiny screens still wrap gracefully.
-        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            BoxWithConstraints {
-                val cardWidth = minOf(156.dp, (maxWidth - 80.dp) / 5)
-                val cardHeight = cardWidth * 172f / 156f
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                ) {
-                    HomeCardItem(
-                        card = HomeCard("Live TV", Icons.Default.LiveTv),
-                        onClick = onOpenLive,
-                        cardWidth = cardWidth,
-                        cardHeight = cardHeight,
-                        modifier = Modifier.focusRequester(liveFocus),
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Wordmark()
+                Spacer(Modifier.weight(1f))
+                playlist?.let { active ->
+                    Text(
+                        text = active.name,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    HomeCardItem(HomeCard("Movies", Icons.Default.Movie), onOpenMovies, cardWidth, cardHeight)
-                    HomeCardItem(HomeCard("Series", Icons.Default.VideoLibrary), onOpenSeries, cardWidth, cardHeight)
-                    HomeCardItem(HomeCard("Change Playlist", Icons.Default.SwapHoriz), onOpenPlaylists, cardWidth, cardHeight)
-                    HomeCardItem(HomeCard("Settings", Icons.Default.Settings), onOpenSettings, cardWidth, cardHeight)
+                    active.expiryEpochSec?.let { expiry ->
+                        Text(
+                            text = "  ·  expires ${formatDate(expiry * 1000)}",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        text = "  ·  ",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+                Clock()
             }
         }
 
-        // Sync activity, kept quiet at the bottom edge.
+        val minimumCardWidth = when (layoutInfo.widthClass) {
+            WindowWidthClass.COMPACT -> 132.dp
+            WindowWidthClass.MEDIUM -> 148.dp
+            WindowWidthClass.EXPANDED -> 164.dp
+        }
+
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(minSize = minimumCardWidth),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(vertical = 20.dp),
+        ) {
+            items(cards, key = { it.label }) { card ->
+                HomeCardItem(
+                    card = card,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(0.94f)
+                        .then(
+                            if (card.label == "Live TV") Modifier.focusRequester(liveFocus) else Modifier,
+                        ),
+                )
+            }
+        }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.height(24.dp),
@@ -187,20 +205,29 @@ fun HomeScreen(
 }
 
 @Composable
+private fun Wordmark() {
+    Text(
+        text = stringResource(R.string.app_name).uppercase(),
+        style = TextStyle(
+            brush = NovaAccentGradient,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 5.sp,
+        ),
+    )
+}
+
+@Composable
 private fun HomeCardItem(
     card: HomeCard,
-    onClick: () -> Unit,
-    cardWidth: Dp = 156.dp,
-    cardHeight: Dp = 172.dp,
     modifier: Modifier = Modifier,
 ) {
     NovaClickable(
-        onClick = onClick,
-        modifier = modifier.size(width = cardWidth, height = cardHeight),
+        onClick = card.onClick,
+        modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        focusedScale = 1.09f,
+        focusedScale = 1.07f,
     ) {
-        // Faint top sheen makes the card read as glass instead of a flat tile.
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -212,24 +239,26 @@ private fun HomeCardItem(
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(58.dp)
                     .border(1.5.dp, NovaAccentGradient, CircleShape)
                     .background(NovaAccent.copy(alpha = 0.08f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = card.icon,
-                    contentDescription = null,
+                    contentDescription = card.label,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(28.dp),
                 )
             }
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(14.dp))
             Text(
                 text = card.label,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 letterSpacing = 0.4.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
