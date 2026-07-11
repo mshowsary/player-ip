@@ -16,6 +16,7 @@ fun SeriesScreen(
     val bookmarkedIds by viewModel.bookmarkedIds.collectAsStateWithLifecycle()
 
     CatalogGridScreen(
+        title = "Series",
         categories = categories.map { it.id to it.name },
         browser = viewModel.browser,
         searchPlaceholder = "Search series…",
