@@ -2,6 +2,7 @@ package com.novaplay.tv.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,19 +27,22 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.itemKey
+import androidx.tv.material3.MaterialTheme
+import androidx.tv.material3.Text
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.ui.live.CategoryChipsRow
 import com.novaplay.tv.ui.live.CategoryRail
 import com.novaplay.tv.ui.live.SearchField
-import com.novaplay.tv.ui.theme.isCompactWidth
+import com.novaplay.tv.ui.theme.catalogLayoutSpec
 import com.novaplay.tv.ui.theme.screenPadding
 
-// Category rail + poster grid, shared by Movies and Series. The grid sizes
-// its columns to the space: ~5 on TV, 3 on a portrait phone, more on tablets.
-// Compact widths swap the side rail for a chip strip above the grid.
+// Category rail + poster grid, shared by Movies and Series. The same content
+// state is retained while the current app window moves between phone, tablet,
+// split-screen, desktop, and TV layouts.
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun <T : Any> CatalogGridScreen(
+    title: String,
     categories: List<Pair<Long, String>>,
     browser: CatalogBrowser<T>,
     searchPlaceholder: String,
@@ -51,14 +55,19 @@ fun <T : Any> CatalogGridScreen(
     val searchQuery by browser.searchQuery.collectAsStateWithLifecycle()
     val items: LazyPagingItems<T> = browser.items.collectAsLazyPagingItems()
     val gridState = rememberLazyGridState()
+    val layout = catalogLayoutSpec()
 
-    // Every group change starts the grid back at the top.
+    // Every group change starts the grid back at the top. Rotation and window
+    // resizing do not change these keys, so the current scroll position survives.
     LaunchedEffect(selectedCategoryId, searchActive) {
         gridState.scrollToItem(0)
     }
 
     val gridPane: @Composable () -> Unit = {
         Column(modifier = Modifier.fillMaxSize()) {
+            Text(text = title, style = MaterialTheme.typography.headlineMedium)
+            Spacer(Modifier.height(12.dp))
+
             if (searchActive) {
                 SearchField(
                     query = searchQuery,
@@ -71,16 +80,17 @@ fun <T : Any> CatalogGridScreen(
 
             when {
                 items.itemCount == 0 && items.loadState.refresh is LoadState.Loading -> {
-                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                        repeat(2) { PosterGridSkeleton(columns = 5) }
-                    }
+                    ResponsivePosterSkeleton(
+                        posterMinWidthDp = layout.posterMinWidthDp,
+                        spacingDp = layout.gridSpacingDp,
+                    )
                 }
                 items.itemCount == 0 -> {
                     EmptyState(
                         message = when {
                             searchActive -> "Nothing matches your search"
                             selectedCategoryId == ContentRepository.CATEGORY_BOOKMARKS ->
-                                "No bookmarks yet — tap the bookmark badge on any poster"
+                                "No bookmarks yet — use the bookmark button on any poster"
                             selectedCategoryId == ContentRepository.CATEGORY_RECENT ->
                                 "Titles you play will appear here"
                             else -> emptyMessage
@@ -89,10 +99,10 @@ fun <T : Any> CatalogGridScreen(
                 }
                 else -> {
                     LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 96.dp),
+                        columns = GridCells.Adaptive(minSize = layout.posterMinWidthDp.dp),
                         state = gridState,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        horizontalArrangement = Arrangement.spacedBy(layout.gridSpacingDp.dp),
+                        verticalArrangement = Arrangement.spacedBy(layout.gridSpacingDp.dp),
                         modifier = Modifier
                             .fillMaxSize()
                             .focusRestorer(),
@@ -111,7 +121,7 @@ fun <T : Any> CatalogGridScreen(
         }
     }
 
-    if (isCompactWidth()) {
+    if (!layout.showCategoryRail) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -141,12 +151,30 @@ fun <T : Any> CatalogGridScreen(
                 onOpenSearch = browser::openSearch,
                 modifier = Modifier
                     .fillMaxHeight()
-                    .fillMaxWidth(0.3f),
+                    .width(layout.categoryRailWidthDp.dp),
             )
 
             Spacer(Modifier.width(24.dp))
-
             gridPane()
+        }
+    }
+}
+
+@Composable
+private fun ResponsivePosterSkeleton(
+    posterMinWidthDp: Int,
+    spacingDp: Int,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val available = maxWidth.value.coerceAtLeast(posterMinWidthDp.toFloat())
+        val columns = (available / (posterMinWidthDp + spacingDp))
+            .toInt()
+            .coerceIn(2, 8)
+
+        Column(verticalArrangement = Arrangement.spacedBy(spacingDp.dp)) {
+            repeat(2) {
+                PosterGridSkeleton(columns = columns, spacingDp = spacingDp)
+            }
         }
     }
 }
