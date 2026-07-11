@@ -20,8 +20,8 @@ import androidx.room.RoomDatabase
         MovieFts::class,
         SeriesFts::class,
     ],
-    version = 2,
-    exportSchema = false,
+    version = 3,
+    exportSchema = true,
 )
 abstract class NovaDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
