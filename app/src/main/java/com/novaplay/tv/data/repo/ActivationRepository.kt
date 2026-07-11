@@ -22,6 +22,7 @@ sealed interface ActivationCheck {
 @Singleton
 class ActivationRepository @Inject constructor(
     private val portalApi: PortalApi,
+    private val portalPairingRepository: PortalPairingRepository,
     private val deviceIdentity: DeviceIdentity,
     private val db: NovaDatabase,
     private val playlistSecrets: PlaylistSecrets,
@@ -34,6 +35,24 @@ class ActivationRepository @Inject constructor(
             return ActivationCheck.Activated(MockPortal.playlists.size)
         }
 
+        // Once device-code pairing has issued a bearer session, never send the
+        // legacy MAC + visible key in a query string again.
+        if (portalPairingRepository.hasStoredSession()) {
+            return portalPairingRepository.authorizedPlaylists().fold(
+                onSuccess = { playlists ->
+                    if (playlists.isEmpty()) {
+                        ActivationCheck.NotRegistered
+                    } else {
+                        attach(playlists)
+                        ActivationCheck.Activated(playlists.size)
+                    }
+                },
+                onFailure = { error -> ActivationCheck.Failure(error.message ?: "Portal session failed") },
+            )
+        }
+
+        // Temporary migration path for the existing portal contract. This will
+        // be removed after the pairing UI and server are deployed together.
         val identity = deviceIdentity.get()
         val response = try {
             portalApi.getPlaylists(identity.mac, identity.deviceKey)
