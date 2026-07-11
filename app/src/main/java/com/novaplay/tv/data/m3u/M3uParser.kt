@@ -7,6 +7,8 @@ import okhttp3.Request
 import java.io.BufferedReader
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -19,43 +21,81 @@ data class M3uEntry(
     val url: String,
 )
 
-// Streams the playlist line-by-line. Remote playlists are read straight from
-// the socket and imported playlists are read from the app's private storage;
-// a 50k-channel M3U is never held in memory as a whole.
 @Singleton
 class M3uParser @Inject constructor(
     private val okHttpClient: OkHttpClient,
 ) {
+    // Direct parsing remains available for validation and smaller operations.
     suspend fun parse(url: String, onEntry: suspend (M3uEntry) -> Unit): Unit =
         withContext(Dispatchers.IO) {
-            openReader(url).useLines { lines ->
-                var pending: PendingEntry? = null
-                for (rawLine in lines) {
-                    val line = rawLine.trim()
-                    when {
-                        line.isEmpty() || line.startsWith("#EXTM3U") -> Unit
-                        line.startsWith("#EXTINF") -> pending = parseExtInf(line)
-                        line.startsWith("#") -> Unit // other directives (e.g. #EXTVLCOPT) skipped
-                        else -> {
-                            val info = pending
-                            pending = null
-                            // A URL with no preceding EXTINF is malformed; skip, never fatal.
-                            if (info != null && info.name.isNotBlank()) {
-                                onEntry(
-                                    M3uEntry(
-                                        name = info.name,
-                                        logoUrl = info.attributes["tvg-logo"]?.takeIf { it.isNotBlank() },
-                                        group = info.attributes["group-title"]?.takeIf { it.isNotBlank() },
-                                        tvgId = info.attributes["tvg-id"]?.takeIf { it.isNotBlank() },
-                                        url = line,
-                                    ),
-                                )
-                            }
+            openReader(url).use { reader -> parseReader(reader, onEntry) }
+        }
+
+    /**
+     * Copies a remote or local M3U into a bounded cache file before Room changes
+     * begin. If the network fails, the existing catalogue is untouched.
+     */
+    suspend fun snapshot(url: String, destination: File): File = withContext(Dispatchers.IO) {
+        destination.parentFile?.mkdirs()
+        try {
+            val input = when {
+                url.startsWith("file:") -> File(URI(url)).inputStream().buffered()
+                else -> {
+                    val response = okHttpClient.newCall(Request.Builder().url(url).build()).execute()
+                    if (!response.isSuccessful) {
+                        response.close()
+                        throw IOException("M3U download failed: HTTP ${response.code}")
+                    }
+                    response.body?.byteStream()?.buffered()
+                        ?: run {
+                            response.close()
+                            throw IOException("M3U download failed: empty body")
                         }
+                }
+            }
+            input.use { source ->
+                destination.outputStream().buffered().use { output ->
+                    copyWithLimit(source, output, MAX_SNAPSHOT_BYTES)
+                }
+            }
+            destination
+        } catch (error: Throwable) {
+            destination.delete()
+            throw error
+        }
+    }
+
+    /** Parse an already-local snapshot without any provider network request. */
+    suspend fun parseSnapshot(file: File, onEntry: suspend (M3uEntry) -> Unit) {
+        file.bufferedReader().use { reader -> parseReader(reader, onEntry) }
+    }
+
+    private suspend fun parseReader(reader: BufferedReader, onEntry: suspend (M3uEntry) -> Unit) {
+        var pending: PendingEntry? = null
+        reader.lineSequence().forEach { rawLine ->
+            val line = rawLine.trim()
+            when {
+                line.isEmpty() || line.startsWith("#EXTM3U") -> Unit
+                line.startsWith("#EXTINF") -> pending = parseExtInf(line)
+                line.startsWith("#") -> Unit // e.g. #EXTVLCOPT
+                else -> {
+                    val info = pending
+                    pending = null
+                    if (info != null && info.name.isNotBlank()) {
+                        onEntry(
+                            M3uEntry(
+                                name = info.name,
+                                logoUrl = info.attributes["tvg-logo"]?.takeIf { it.isNotBlank() },
+                                group = info.attributes["group-title"]?.takeIf { it.isNotBlank() },
+                                tvgId = info.attributes["tvg-id"]?.takeIf { it.isNotBlank() },
+                                url = line,
+                            ),
+                        )
                     }
                 }
             }
         }
+    }
 
     private fun openReader(url: String): BufferedReader = when {
         url.startsWith("file:") -> File(URI(url)).bufferedReader()
@@ -74,13 +114,23 @@ class M3uParser @Inject constructor(
         }
     }
 
+    private fun copyWithLimit(input: InputStream, output: OutputStream, limit: Long) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            total += read
+            require(total <= limit) { "M3U playlist exceeds the ${limit / 1024 / 1024} MB safety limit" }
+            output.write(buffer, 0, read)
+        }
+    }
+
     private data class PendingEntry(val name: String, val attributes: Map<String, String>)
 
     private fun parseExtInf(line: String): PendingEntry {
         val attributes = ATTRIBUTE_REGEX.findAll(line)
             .associate { it.groupValues[1].lowercase() to it.groupValues[2] }
-        // Display name = text after the comma that follows the last quoted attribute
-        // (names themselves may contain commas).
         val lastQuote = line.lastIndexOf('"')
         val commaIndex = line.indexOf(',', startIndex = if (lastQuote >= 0) lastQuote else 0)
         val name = if (commaIndex >= 0) line.substring(commaIndex + 1).trim() else ""
@@ -92,5 +142,6 @@ class M3uParser @Inject constructor(
 
     private companion object {
         val ATTRIBUTE_REGEX = Regex("""([\w-]+)="([^"]*)"""")
+        const val MAX_SNAPSHOT_BYTES = 256L * 1024 * 1024
     }
 }
