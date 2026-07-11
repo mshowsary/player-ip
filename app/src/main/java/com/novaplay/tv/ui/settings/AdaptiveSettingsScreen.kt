@@ -58,10 +58,6 @@ import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
-/**
- * Settings grouped into clear cards. Compact touch devices get one natural
- * vertical flow; tablets and TV get two independent focus-restoring columns.
- */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun AdaptiveSettingsScreen(
@@ -75,7 +71,6 @@ fun AdaptiveSettingsScreen(
     val cacheCleared by viewModel.cacheCleared.collectAsStateWithLifecycle()
     val firstFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
-    val compact = isCompactWidth()
 
     LaunchedEffect(isTv) {
         if (isTv) runCatching { firstFocus.requestFocus() }
@@ -94,7 +89,7 @@ fun AdaptiveSettingsScreen(
         )
         Spacer(Modifier.height(18.dp))
 
-        if (compact) {
+        if (isCompactWidth()) {
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 modifier = Modifier
@@ -108,7 +103,7 @@ fun AdaptiveSettingsScreen(
                         onSelect = viewModel::setUiMode,
                     )
                 }
-                item { PlaybackCard(liveFormat = liveFormat, onSelect = viewModel::setLiveFormat) }
+                item { PlaybackCard(liveFormat, viewModel::setLiveFormat) }
                 item {
                     MaintenanceCard(
                         syncStatus = syncStatus,
@@ -143,7 +138,7 @@ fun AdaptiveSettingsScreen(
                             onSelect = viewModel::setUiMode,
                         )
                     }
-                    item { PlaybackCard(liveFormat = liveFormat, onSelect = viewModel::setLiveFormat) }
+                    item { PlaybackCard(liveFormat, viewModel::setLiveFormat) }
                     item {
                         MaintenanceCard(
                             syncStatus = syncStatus,
@@ -154,9 +149,7 @@ fun AdaptiveSettingsScreen(
                     }
                     item { DeviceCard(deviceInfo) }
                 }
-
                 Spacer(Modifier.width(24.dp))
-
                 LazyColumn(
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                     modifier = Modifier
@@ -309,9 +302,9 @@ private fun DeviceCard(info: DeviceInfo) {
         title = "This device",
         description = "These identifiers are used for managed portal activation and support.",
     ) {
-        DeviceInfoRow(label = "MAC address", value = info.mac)
-        DeviceInfoRow(label = "Device key", value = info.deviceKey)
-        DeviceInfoRow(label = "App version", value = info.appVersion)
+        DeviceInfoRow("MAC address", info.mac)
+        DeviceInfoRow("Device key", info.deviceKey)
+        DeviceInfoRow("App version", info.appVersion)
     }
 }
 
@@ -332,8 +325,15 @@ private fun SettingsCard(
                 shape = MaterialTheme.shapes.medium,
             )
             .padding(18.dp),
-        content = content,
-    )
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleLarge)
+        Text(
+            text = description,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        content()
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -385,9 +385,7 @@ private fun ChoicePill(
         focusedScale = 1.04f,
         modifier = modifier
             .height(48.dp)
-            .then(
-                if (selected) Modifier.border(1.dp, NovaAccentGradient, RoundedCornerShape(50)) else Modifier,
-            ),
+            .then(if (selected) Modifier.border(1.dp, NovaAccentGradient, RoundedCornerShape(50)) else Modifier),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -432,11 +430,7 @@ private fun SubtitlePreview(style: SubtitleStyle) {
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
             shadow = when (style.edge) {
-                SubtitleEdge.DROP_SHADOW -> Shadow(
-                    color = Color.Black,
-                    offset = Offset(3f, 3f),
-                    blurRadius = 6f,
-                )
+                SubtitleEdge.DROP_SHADOW -> Shadow(Color.Black, Offset(3f, 3f), 6f)
                 else -> null
             },
         )
@@ -468,7 +462,6 @@ private fun DeviceInfoRow(label: String, value: String) {
         Text(
             text = value.ifBlank { "—" },
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.End,
             modifier = Modifier.weight(1.4f),
         )
