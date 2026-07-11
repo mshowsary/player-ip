@@ -1,0 +1,25 @@
+package com.novaplay.tv.ui.home
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.novaplay.tv.data.db.Playlist
+import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.repo.SyncRepository
+import com.novaplay.tv.data.repo.SyncStatus
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import javax.inject.Inject
+
+@HiltViewModel
+class HomeViewModel @Inject constructor(
+    contentRepository: ContentRepository,
+    syncRepository: SyncRepository,
+) : ViewModel() {
+
+    val playlist: StateFlow<Playlist?> = contentRepository.activePlaylist
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    val syncStatus: StateFlow<SyncStatus> = syncRepository.status
+}

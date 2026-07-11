@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Window-level theme only; all real theming lives in Compose. Dark window
+         background avoids a light flash before the first frame. The app runs
+         edge-to-edge and immersive (MainActivity hides the system bars). -->
+    <style name="Theme.NovaPlay" parent="android:Theme.Material.NoActionBar.Fullscreen">
+        <item name="android:windowBackground">@color/background</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="android:windowAnimationStyle">@null</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="o_mr1">shortEdges</item>
+    </style>
+</resources>

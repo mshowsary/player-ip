@@ -1,0 +1,95 @@
+package com.novaplay.tv.data.repo
+
+import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.core.DeviceIdentity
+import com.novaplay.tv.data.db.NovaDatabase
+import com.novaplay.tv.data.db.Playlist
+import com.novaplay.tv.data.remote.MockPortal
+import com.novaplay.tv.data.remote.PortalApi
+import com.novaplay.tv.data.remote.PortalPlaylistDto
+import androidx.room.withTransaction
+import javax.inject.Inject
+import javax.inject.Singleton
+
+sealed interface ActivationCheck {
+    data class Activated(val playlistCount: Int) : ActivationCheck
+    data object NotRegistered : ActivationCheck
+    data object KeyMismatch : ActivationCheck
+    data class Failure(val message: String) : ActivationCheck
+}
+
+@Singleton
+class ActivationRepository @Inject constructor(
+    private val portalApi: PortalApi,
+    private val deviceIdentity: DeviceIdentity,
+    private val db: NovaDatabase,
+) {
+    suspend fun hasPlaylists(): Boolean = db.playlistDao().count() > 0
+
+    suspend fun checkAndAttach(): ActivationCheck {
+        if (BuildConfig.MOCK_ACTIVATION) {
+            attach(MockPortal.playlists)
+            return ActivationCheck.Activated(MockPortal.playlists.size)
+        }
+
+        val identity = deviceIdentity.get()
+        val response = try {
+            portalApi.getPlaylists(identity.mac, identity.deviceKey)
+        } catch (e: Exception) {
+            return ActivationCheck.Failure(e.message ?: "Network error")
+        }
+
+        return when {
+            response.isSuccessful -> {
+                val playlists = response.body()?.playlists.orEmpty()
+                if (playlists.isEmpty()) {
+                    ActivationCheck.NotRegistered
+                } else {
+                    attach(playlists)
+                    ActivationCheck.Activated(playlists.size)
+                }
+            }
+            response.code() == 404 -> ActivationCheck.NotRegistered
+            response.code() == 403 -> ActivationCheck.KeyMismatch
+            else -> ActivationCheck.Failure("Portal error: HTTP ${response.code()}")
+        }
+    }
+
+    // Upsert by portal id: re-polling refreshes credentials/names without
+    // touching already-synced content or the active selection.
+    private suspend fun attach(dtos: List<PortalPlaylistDto>) {
+        val dao = db.playlistDao()
+        db.withTransaction {
+            for (dto in dtos) {
+                val existing = dao.getByPortalId(dto.id)
+                if (existing == null) {
+                    dao.insert(
+                        Playlist(
+                            portalId = dto.id,
+                            name = dto.name,
+                            type = dto.type,
+                            server = dto.server,
+                            username = dto.username,
+                            password = dto.password,
+                            url = dto.url,
+                        ),
+                    )
+                } else {
+                    dao.update(
+                        existing.copy(
+                            name = dto.name,
+                            type = dto.type,
+                            server = dto.server,
+                            username = dto.username,
+                            password = dto.password,
+                            url = dto.url,
+                        ),
+                    )
+                }
+            }
+            if (dao.getActive() == null) {
+                dao.getByPortalId(dtos.first().id)?.let { dao.setActive(it.id) }
+            }
+        }
+    }
+}
