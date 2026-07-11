@@ -116,18 +116,24 @@ fun AdaptivePlaylistsScreen(
             EmptyState(message = "No playlists yet. Add Xtream details, an M3U URL, or import an M3U file.")
         } else {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isTv) 0.dp else 12.dp),
                 modifier = Modifier
                     .weight(1f)
                     .focusRestorer(),
             ) {
                 items(count = playlists.size, key = { playlists[it].id }) { index ->
                     val playlist = playlists[index]
-                    val rowModifier = if (index == 0 && isTv) {
-                        Modifier.focusRequester(firstRowFocus)
-                    } else {
-                        Modifier
-                    }
+                    val focusSafeModifier = Modifier.padding(
+                        horizontal = if (isTv) 16.dp else 0.dp,
+                        vertical = if (isTv) 10.dp else 0.dp,
+                    )
+                    val rowModifier = focusSafeModifier.then(
+                        if (index == 0 && isTv) {
+                            Modifier.focusRequester(firstRowFocus)
+                        } else {
+                            Modifier
+                        },
+                    )
 
                     if (isTv) {
                         TvPlaylistCard(
