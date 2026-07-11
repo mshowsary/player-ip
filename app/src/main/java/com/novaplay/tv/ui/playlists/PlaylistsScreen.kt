@@ -79,6 +79,12 @@ import java.util.Date
 import java.util.Locale
 import javax.inject.Inject
 
+/**
+ * State and actions for playlist management: exposes the playlist list and active id, runs
+ * test/save/import/sync/remove behind a single [busy] flag (operations are dropped, not
+ * queued, while one runs), and emits one-shot events when a playlist becomes usable
+ * ([playlistReady]) or the last one is removed ([allRemoved]).
+ */
 @HiltViewModel
 class PlaylistsViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
@@ -107,10 +113,16 @@ class PlaylistsViewModel @Inject constructor(
     private val _playlistReady = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val playlistReady: SharedFlow<Unit> = _playlistReady.asSharedFlow()
 
+    /** True for user-created playlists (editable); false for portal-managed assignments. */
     fun isPersonal(playlist: Playlist): Boolean = playlistManager.isPersonal(playlist)
 
+    /** Builds an editable draft (including credentials) from a stored playlist. */
     fun draftFrom(playlist: Playlist): PlaylistDraft = playlistManager.draftFrom(playlist)
 
+    /**
+     * Makes the playlist the active content source and syncs it if its data is stale.
+     * Runs in the app scope so the sync survives leaving this screen.
+     */
     fun setActive(playlist: Playlist) {
         appScope.launch {
             contentRepository.setActivePlaylist(playlist.id)
@@ -119,6 +131,10 @@ class PlaylistsViewModel @Inject constructor(
         showMessage("“${playlist.name}” is now active")
     }
 
+    /**
+     * Runs a full sync of the playlist, reporting the outcome and emitting [playlistReady]
+     * on success. Dropped silently while another operation is busy.
+     */
     fun syncNow(playlist: Playlist) {
         if (_busy.value) return
         viewModelScope.launch {
@@ -154,6 +170,10 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Probes the draft's source without saving anything; on success the message includes
+     * connection count and account expiry when the provider reports them.
+     */
     fun test(draft: PlaylistDraft) {
         if (_busy.value) return
         viewModelScope.launch {
@@ -176,6 +196,10 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persists the draft, makes it active and syncs it immediately. The playlist is kept
+     * even when the follow-up sync fails; [playlistReady] fires only on full success.
+     */
     fun save(draft: PlaylistDraft) {
         if (_busy.value) return
         viewModelScope.launch {
@@ -203,6 +227,10 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Imports a local M3U file as a new playlist, then activates and syncs it, mirroring
+     * [save]'s keep-on-sync-failure behavior.
+     */
     fun importM3u(uri: Uri) {
         if (_busy.value) return
         viewModelScope.launch {
@@ -230,6 +258,10 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Deletes the playlist and its synced content. Emits [allRemoved] instead of a message
+     * when it was the last playlist, so the UI can route back to activation.
+     */
     fun remove(playlist: Playlist) {
         viewModelScope.launch {
             val remaining = contentRepository.deletePlaylist(playlist.id)
@@ -241,6 +273,7 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    // Shows a transient status message, auto-clearing after 4.5s unless replaced meanwhile.
     private fun showMessage(text: String) {
         viewModelScope.launch {
             _message.value = text
@@ -249,10 +282,16 @@ class PlaylistsViewModel @Inject constructor(
         }
     }
 
+    // User-facing text for a throwable, falling back when the message is null/blank.
     private fun Throwable?.userMessage(): String =
         this?.message?.takeIf { it.isNotBlank() } ?: "Unknown error"
 }
 
+/**
+ * Original single-layout playlists screen: dialog-based per-playlist actions and an editor
+ * without field validation. On TV the first row grabs initial focus. Superseded in the nav
+ * graph by [AdaptivePlaylistsScreen]; kept as a standalone entry point over the same ViewModel.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun PlaylistsScreen(
@@ -442,6 +481,7 @@ fun PlaylistsScreen(
     }
 }
 
+/** Row of Add / Import M3U / Refresh portal buttons; all ignore clicks while busy. */
 @Composable
 private fun PlaylistToolbar(
     busy: Boolean,
@@ -456,6 +496,11 @@ private fun PlaylistToolbar(
     }
 }
 
+/**
+ * Add/Edit playlist dialog without field validation: Test/Save pass the raw draft through.
+ * The type can only be chosen when creating; imported file playlists (file: URL) expose
+ * just the name field.
+ */
 @Composable
 private fun PlaylistEditorDialog(
     initial: PlaylistDraft,
@@ -563,6 +608,10 @@ private fun PlaylistEditorDialog(
     }
 }
 
+/**
+ * Xtream/M3U type selector button: selected state tints container and label, and the
+ * focused state switches to the primary color for D-pad visibility.
+ */
 @Composable
 private fun PlaylistTypeButton(
     text: String,
@@ -590,6 +639,10 @@ private fun PlaylistTypeButton(
     }
 }
 
+/**
+ * Minimal labeled single-line text field with the label doubling as placeholder; supports
+ * password masking and a URI keyboard, advancing focus with the IME Next action.
+ */
 @Composable
 private fun PlaylistTextField(
     label: String,
@@ -639,6 +692,10 @@ private fun PlaylistTextField(
     }
 }
 
+/**
+ * Focusable playlist row showing name, type/ownership/expiry metadata and an ACTIVE marker;
+ * clicking (or D-pad select) opens the per-playlist actions dialog.
+ */
 @Composable
 private fun PlaylistRow(
     playlist: Playlist,

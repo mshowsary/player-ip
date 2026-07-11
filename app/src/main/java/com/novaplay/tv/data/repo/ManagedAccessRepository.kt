@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Lifecycle of a portal-managed device; UNMANAGED means no portal governs it. */
 enum class ManagedAccessState {
     UNMANAGED,
     ACTIVE,
@@ -16,12 +17,14 @@ enum class ManagedAccessState {
     REVOKED,
 }
 
+/** Content sections a managed policy can allow or block individually. */
 enum class ManagedFeature {
     LIVE,
     MOVIES,
     SERIES,
 }
 
+/** Effective access policy for this device; the default value is fully open (unmanaged). */
 data class ManagedAccessPolicy(
     val state: ManagedAccessState = ManagedAccessState.UNMANAGED,
     val allowLive: Boolean = true,
@@ -35,6 +38,10 @@ data class ManagedAccessPolicy(
     val isManaged: Boolean get() = state != ManagedAccessState.UNMANAGED
     val isBlocked: Boolean get() = state == ManagedAccessState.SUSPENDED || state == ManagedAccessState.REVOKED
 
+    /**
+     * Whether a feature is currently permitted. Fails closed: any managed state
+     * other than ACTIVE denies everything, regardless of the per-feature flags.
+     */
     fun allows(feature: ManagedFeature): Boolean {
         if (state == ManagedAccessState.UNMANAGED) return true
         if (state != ManagedAccessState.ACTIVE) return false
@@ -45,6 +52,7 @@ data class ManagedAccessPolicy(
         }
     }
 
+    /** Short user-facing label for the current state, shown in settings. */
     fun statusLabel(): String = when (state) {
         ManagedAccessState.UNMANAGED -> "Personal access"
         ManagedAccessState.ACTIVE -> "Managed access active"
@@ -53,6 +61,11 @@ data class ManagedAccessPolicy(
     }
 
     companion object {
+        /**
+         * Maps the portal DTO to a policy. Unknown status strings fail closed
+         * to SUSPENDED rather than granting access; message and support code
+         * are trimmed and length-capped for safe display.
+         */
         fun fromPortal(dto: PortalPolicyDto?, nowEpochSec: Long): ManagedAccessPolicy {
             if (dto == null) return ManagedAccessPolicy()
             val state = when (dto.status.trim().lowercase()) {
@@ -75,6 +88,11 @@ data class ManagedAccessPolicy(
     }
 }
 
+/**
+ * Persists the last-known managed access policy in SharedPreferences and
+ * exposes it as a StateFlow, so enforcement keeps working offline with the
+ * most recent portal decision.
+ */
 @Singleton
 class ManagedAccessRepository @Inject constructor(
     @ApplicationContext context: Context,
@@ -83,12 +101,17 @@ class ManagedAccessRepository @Inject constructor(
     private val _policy = MutableStateFlow(load())
     val policy: StateFlow<ManagedAccessPolicy> = _policy.asStateFlow()
 
+    /**
+     * Applies a policy fresh from the portal. A null DTO is ignored on purpose:
+     * an omitted policy keeps the last-known one instead of silently unlocking.
+     */
     @Synchronized
     fun applyPortalPolicy(dto: PortalPolicyDto?) {
         if (dto == null) return
         apply(ManagedAccessPolicy.fromPortal(dto, nowEpochSec()))
     }
 
+    /** Persists the policy and emits it to [policy] collectors in one step. */
     @Synchronized
     fun apply(policy: ManagedAccessPolicy) {
         preferences.edit()
@@ -104,12 +127,14 @@ class ManagedAccessRepository @Inject constructor(
         _policy.value = policy
     }
 
+    /** Drops the stored policy and reverts to unmanaged, e.g. on portal disconnect. */
     @Synchronized
     fun clear() {
         preferences.edit().clear().apply()
         _policy.value = ManagedAccessPolicy()
     }
 
+    /** Installs a canned policy for debug builds so each managed state can be exercised by hand. */
     fun setDebugPreset(preset: DebugManagedPolicyPreset) {
         val now = nowEpochSec()
         val next = when (preset) {
@@ -152,6 +177,8 @@ class ManagedAccessRepository @Inject constructor(
         apply(next)
     }
 
+    // Restores the persisted policy at startup; unknown or missing state falls
+    // back to UNMANAGED, matching a fresh install.
     private fun load(): ManagedAccessPolicy {
         val state = preferences.getString(KEY_STATE, null)
             ?.let { stored -> ManagedAccessState.entries.firstOrNull { it.name == stored } }
@@ -168,6 +195,7 @@ class ManagedAccessRepository @Inject constructor(
         )
     }
 
+    // Wall-clock seconds, matching the portal's updated-at resolution.
     private fun nowEpochSec(): Long = System.currentTimeMillis() / 1_000L
 
     private companion object {
@@ -184,6 +212,7 @@ class ManagedAccessRepository @Inject constructor(
     }
 }
 
+/** Debug-menu presets that map onto representative managed policies. */
 enum class DebugManagedPolicyPreset(val label: String) {
     FULL_ACCESS("Full access"),
     LIVE_ONLY("Live only"),

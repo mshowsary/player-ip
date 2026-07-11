@@ -226,6 +226,10 @@ fun AdaptivePlaylistsScreen(
     }
 }
 
+/**
+ * Screen title with Add / Import M3U / Refresh portal actions: stacked full-width buttons
+ * on compact widths, a single header row elsewhere. All actions no-op while busy.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaylistHeader(
@@ -285,6 +289,10 @@ private fun PlaylistHeader(
     }
 }
 
+/**
+ * Touch-mode playlist card with inline Use / Sync / Edit / Remove buttons. "Use" is hidden
+ * for the active playlist and "Edit" for managed ones; clicks are ignored while busy.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TouchPlaylistCard(
@@ -318,6 +326,10 @@ private fun TouchPlaylistCard(
     }
 }
 
+/**
+ * TV-mode playlist row: a single focusable card that opens the actions dialog on click,
+ * keeping D-pad traversal to one focus stop per playlist instead of a button row.
+ */
 @Composable
 private fun TvPlaylistCard(
     playlist: Playlist,
@@ -345,6 +357,10 @@ private fun TvPlaylistCard(
     }
 }
 
+/**
+ * Shared name + ACTIVE badge + metadata block (type, Personal/Managed, sync state, account
+ * expiry) rendered inside both the touch and TV cards.
+ */
 @Composable
 private fun PlaylistSummary(
     playlist: Playlist,
@@ -401,6 +417,10 @@ private fun PlaylistSummary(
     }
 }
 
+/**
+ * Transient ViewModel status line below the list, tinted as an error when the text
+ * heuristically reads like a failure ("failed", "could not", "mismatch").
+ */
 @Composable
 private fun StatusMessage(text: String) {
     val failed = text.contains("failed", ignoreCase = true) ||
@@ -416,6 +436,10 @@ private fun StatusMessage(text: String) {
     )
 }
 
+/**
+ * Focus-first per-playlist action dialog for TV. "Set active" is hidden for the already
+ * active playlist and "Edit" for managed (portal-assigned) ones; each action also dismisses.
+ */
 @Composable
 private fun TvPlaylistActions(
     playlist: Playlist,
@@ -444,6 +468,12 @@ private fun TvPlaylistActions(
     }
 }
 
+/**
+ * Add/Edit playlist dialog shared by TV and touch, backed by [validatePlaylistDraft].
+ * Field errors only show after the first submit attempt; on TV the first field grabs focus.
+ * Imported file playlists (file: URL) can only be renamed, and the body caps its height to
+ * stay scrollable on small screens.
+ */
 @Composable
 private fun ValidatedPlaylistEditor(
     initial: PlaylistDraft,
@@ -462,6 +492,7 @@ private fun ValidatedPlaylistEditor(
     val screenHeight = LocalConfiguration.current.screenHeightDp.dp
     val bodyMaxHeight = (screenHeight - 140.dp).coerceIn(220.dp, 680.dp)
 
+    // Turns on validation display; runs the action only when the draft is valid and idle.
     fun submit(action: (PlaylistDraft) -> Unit) {
         showValidation = true
         if (errors.isValid && !busy) action(draft)
@@ -592,6 +623,10 @@ private fun ValidatedPlaylistEditor(
     }
 }
 
+/**
+ * Pill-shaped Xtream/M3U type selector; the selected pill gets a variant background and
+ * primary label, with a slight scale on focus.
+ */
 @Composable
 private fun PlaylistTypeChoice(
     text: String,
@@ -615,14 +650,17 @@ private fun PlaylistTypeChoice(
     }
 }
 
+// Human-readable last-sync status for the metadata line; 0 means never synced.
 private fun Playlist.syncLabel(): String = if (lastSyncEpochMs <= 0L) {
     "Not synchronized"
 } else {
     "Synced ${formatDateTime(lastSyncEpochMs)}"
 }
 
+// Locale-aware date, e.g. "Mar 4, 2026" — used for account expiry.
 private fun formatDate(epochMs: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(epochMs))
 
+// Locale-aware date + time, e.g. "Mar 4, 18:32" — used for the last-sync label.
 private fun formatDateTime(epochMs: Long): String =
     SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(epochMs))

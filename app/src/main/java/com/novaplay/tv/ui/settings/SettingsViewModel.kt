@@ -45,12 +45,19 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
+/** Device identifiers shown in settings; MAC and key are filled in asynchronously from [DeviceIdentity]. */
 data class DeviceInfo(
     val mac: String = "",
     val deviceKey: String = "",
     val appVersion: String = BuildConfig.VERSION_NAME,
 )
 
+/**
+ * Backs all settings screen variants. Exposes the DataStore-backed preferences
+ * (UI mode, subtitle style, live format, background sync) as eagerly shared state
+ * flows alongside sync status, managed access policy and device diagnostics, and
+ * persists every change the moment it is made.
+ */
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -106,23 +113,34 @@ class SettingsViewModel @Inject constructor(
         refreshDiagnostics()
     }
 
+    /** Persists the interface mode override (auto, touch or TV). */
     fun setUiMode(mode: UiModePreference) {
         viewModelScope.launch { prefs.setUiMode(mode) }
     }
 
+    /** Persists the subtitle text size; the preview and VOD playback pick it up immediately. */
     fun setSubtitleSize(size: SubtitleSize) = updateStyle { it.copy(size = size) }
+    /** Persists the subtitle text color. */
     fun setSubtitleColor(color: SubtitleColor) = updateStyle { it.copy(color = color) }
+    /** Persists the subtitle background style. */
     fun setSubtitleBackground(background: SubtitleBackground) = updateStyle { it.copy(background = background) }
+    /** Persists the subtitle edge style (none, outline or drop shadow). */
     fun setSubtitleEdge(edge: SubtitleEdge) = updateStyle { it.copy(edge = edge) }
 
+    // Applies a transform to the current subtitle style and persists the result to DataStore.
     private fun updateStyle(transform: (SubtitleStyle) -> SubtitleStyle) {
         viewModelScope.launch { prefs.setSubtitleStyle(transform(subtitleStyle.value)) }
     }
 
+    /** Persists the preferred live stream format (auto, HLS or MPEG-TS). */
     fun setLiveFormat(format: LiveFormat) {
         viewModelScope.launch { prefs.setLiveFormat(format) }
     }
 
+    /**
+     * Persists the background sync mode and reschedules (or cancels) the periodic
+     * worker to match, then shows a transient confirmation message for 2.5 seconds.
+     */
     fun setBackgroundSyncMode(mode: BackgroundSyncMode) {
         viewModelScope.launch {
             prefs.setBackgroundSyncMode(mode)
@@ -137,6 +155,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Clears Coil's memory and disk image caches on the IO dispatcher, refreshes the
+     * storage diagnostics, and flags a "cleared" confirmation for 2.5 seconds.
+     */
     fun clearImageCache() {
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
@@ -150,6 +172,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Re-syncs the active playlist in the application scope so the sync survives
+     * leaving the settings screen; no-op when no playlist is active.
+     */
     fun resyncNow() {
         appScope.launch {
             contentRepository.getActivePlaylist()?.let {
@@ -159,14 +185,21 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Re-captures the diagnostics snapshot (network, memory, storage, catalogue counts). */
     fun refreshDiagnostics() {
         viewModelScope.launch { refreshDiagnosticsInternal() }
     }
 
+    // Suspending core of refreshDiagnostics, reused by callers already inside a coroutine.
     private suspend fun refreshDiagnosticsInternal() {
         _diagnostics.value = diagnosticsRepository.snapshot()
     }
 
+    /**
+     * Copies a privacy-safe support summary to the clipboard. The text is built by
+     * [AppDiagnosticsRepository.supportText] and must never contain playlist URLs,
+     * servers, credentials, tokens, MAC, device key or device ID.
+     */
     fun copySupportDiagnostics() {
         viewModelScope.launch {
             val current = diagnosticsRepository.snapshot().also { _diagnostics.value = it }
@@ -184,6 +217,10 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Re-checks portal activation to pull the latest managed access policy, mapping
+     * each outcome to a short status message that clears after a few seconds.
+     */
     fun refreshManagedAccess() {
         viewModelScope.launch {
             _managedRefreshMessage.value = "Checking managed access…"
@@ -199,6 +236,7 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Applies a debug managed-policy preset for previewing states; ignored entirely on release builds. */
     fun setDebugManagedPolicy(preset: DebugManagedPolicyPreset) {
         if (BuildConfig.DEBUG) managedAccessRepository.setDebugPreset(preset)
     }

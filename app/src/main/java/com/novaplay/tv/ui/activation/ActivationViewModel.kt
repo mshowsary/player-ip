@@ -27,6 +27,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
+/** Lifecycle of a portal pairing attempt, from code creation to a terminal outcome. */
 enum class ActivationPhase {
     PREPARING,
     WAITING_FOR_APPROVAL,
@@ -37,6 +38,11 @@ enum class ActivationPhase {
     ERROR,
 }
 
+/**
+ * Everything ActivationScreen renders. Only the short-lived user code is
+ * exposed here — the session secret stays inside the pairing repository and
+ * is never shown or logged.
+ */
 data class ActivationUiState(
     val deviceId: String = "",
     val supportId: String = "",
@@ -49,6 +55,12 @@ data class ActivationUiState(
     val error: String? = null,
 )
 
+/**
+ * Drives portal device pairing: creates a session, exposes the user code,
+ * polls for approval on the portal's advertised interval, then waits for a
+ * playlist assignment before emitting [activated]. Falls back to the legacy
+ * activation check when the pairing endpoint is unavailable.
+ */
 @HiltViewModel
 class ActivationViewModel @Inject constructor(
     private val deviceIdentity: DeviceIdentity,
@@ -82,6 +94,10 @@ class ActivationViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Manual "check" from the UI: polls for approval or playlist assignment
+     * depending on phase; from terminal states it simply mints a new code.
+     */
     fun checkNow() {
         when (_uiState.value.phase) {
             ActivationPhase.WAITING_FOR_PLAYLIST -> checkAssignedPlaylists(manual = true)
@@ -97,10 +113,15 @@ class ActivationViewModel @Inject constructor(
         }
     }
 
+    /** Discards the current session (including the stored one) and creates a fresh pairing code. */
     fun refreshCode() {
         viewModelScope.launch { createPairingSession(clearStoredSession = true) }
     }
 
+    /**
+     * Cancels all in-flight jobs, requests a new pairing session, and on
+     * success starts the expiry countdown and approval polling.
+     */
     private suspend fun createPairingSession(clearStoredSession: Boolean) {
         pairingJob?.cancel()
         countdownJob?.cancel()
@@ -151,6 +172,8 @@ class ActivationViewModel @Inject constructor(
         )
     }
 
+    // Ticks secondsRemaining every second and flips the phase to EXPIRED if the
+    // code runs out while still waiting for approval.
     private fun startCountdown(session: PortalPairingSession) {
         countdownJob?.cancel()
         countdownJob = viewModelScope.launch {
@@ -172,6 +195,8 @@ class ActivationViewModel @Inject constructor(
         }
     }
 
+    // Polls the portal for approval, following each poll's suggested interval,
+    // until pollSession reports a terminal result (returns null).
     private fun startApprovalPolling(session: PortalPairingSession) {
         pairingJob?.cancel()
         pairingJob = viewModelScope.launch {
@@ -247,6 +272,9 @@ class ActivationViewModel @Inject constructor(
             }
         }
 
+    // After approval but before any playlist exists: re-checks the portal every
+    // 15 s until one is assigned. A key mismatch invalidates the whole session
+    // and sends the user back to a new pairing code.
     private fun checkAssignedPlaylists(manual: Boolean) {
         assignmentJob?.cancel()
         assignmentJob = viewModelScope.launch {
@@ -297,6 +325,8 @@ class ActivationViewModel @Inject constructor(
         }
     }
 
+    // Terminal success: stops all polling, kicks off the first catalog sync on
+    // the app scope (so it outlives this screen), and tells the UI to navigate.
     private fun completeActivation() {
         pairingJob?.cancel()
         countdownJob?.cancel()
@@ -312,12 +342,14 @@ class ActivationViewModel @Inject constructor(
         _activated.tryEmit(Unit)
     }
 
+    // Maps transport failures to user-facing copy without leaking any details.
     private fun friendlyPairingError(error: Throwable): String = when {
         error.message?.contains("HTTP 404", ignoreCase = true) == true ->
             "Secure pairing is not available on this portal yet. Try again later or add your own playlist."
         else -> "Could not create a pairing code. Check the connection and try again."
     }
 
+    // Current wall-clock time in epoch seconds, matching the portal's expiry unit.
     private fun nowEpochSec(): Long = System.currentTimeMillis() / 1_000L
 
     private companion object {

@@ -10,6 +10,10 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
 
+/**
+ * One playlist entitlement granted to this device — either Xtream credentials
+ * (server/username/password) or a direct M3U url, mirroring the Playlist entity.
+ */
 @Serializable
 data class PortalPlaylistDto(
     val id: Long,
@@ -37,6 +41,7 @@ data class PortalPolicyDto(
     @SerialName("policy_revision") val revision: Long = 0L,
 )
 
+/** Entitlements plus the current device policy in one round trip. */
 @Serializable
 data class PortalPlaylistsResponse(
     val playlists: List<PortalPlaylistDto> = emptyList(),
@@ -60,6 +65,10 @@ data class CreatePairingSessionRequest(
     val capabilities: List<String> = listOf("xtream", "m3u", "live", "vod", "series"),
 )
 
+/**
+ * A freshly created pairing session: [userCode] is what the human types on the
+ * portal, [sessionSecret] is the credential the TV polls with.
+ */
 @Serializable
 data class PairingSessionDto(
     @SerialName("session_id") val sessionId: String,
@@ -70,6 +79,10 @@ data class PairingSessionDto(
     @SerialName("session_secret") val sessionSecret: String,
 )
 
+/**
+ * Poll result for a pairing session. Tokens, playlists and policy are only
+ * populated once the portal reports the session approved.
+ */
 @Serializable
 data class PairingStatusDto(
     val status: String,
@@ -80,12 +93,14 @@ data class PairingStatusDto(
     val policy: PortalPolicyDto? = null,
 )
 
+/** Exchange payload: the long-lived refresh token buys a new access token. */
 @Serializable
 data class RefreshDeviceTokenRequest(
     @SerialName("device_id") val deviceId: String,
     @SerialName("refresh_token") val refreshToken: String,
 )
 
+/** Issued device tokens; refreshToken is only present when the portal rotates it. */
 @Serializable
 data class DeviceTokenDto(
     @SerialName("access_token") val accessToken: String,
@@ -93,23 +108,32 @@ data class DeviceTokenDto(
     @SerialName("expires_in") val expiresInSeconds: Long,
 )
 
+/**
+ * Retrofit contract for the provisioning portal. Calls return raw [Response] so
+ * callers can branch on HTTP status (revoked, expired, pending) instead of
+ * treating every non-2xx as an exception.
+ */
 interface PortalApi {
+    /** Starts device-code pairing; the returned userCode is shown on-screen for the user to enter on the portal. */
     @POST("api/v1/pairing/sessions")
     suspend fun createPairingSession(
         @Body request: CreatePairingSessionRequest,
     ): Response<PairingSessionDto>
 
+    /** Polls a pairing session, authenticated by the high-entropy session secret rather than the guessable user code. */
     @GET("api/v1/pairing/sessions/{sessionId}")
     suspend fun getPairingStatus(
         @Path("sessionId") sessionId: String,
         @Header("X-Pairing-Secret") sessionSecret: String,
     ): Response<PairingStatusDto>
 
+    /** Fetches entitlements and policy for an already-paired device; authorization carries the Bearer access token. */
     @GET("api/v1/device/playlists")
     suspend fun getAuthorizedPlaylists(
         @Header("Authorization") authorization: String,
     ): Response<PortalPlaylistsResponse>
 
+    /** Renews the device access token from the refresh token when the current one expires. */
     @POST("api/v1/device/token/refresh")
     suspend fun refreshDeviceToken(
         @Body request: RefreshDeviceTokenRequest,

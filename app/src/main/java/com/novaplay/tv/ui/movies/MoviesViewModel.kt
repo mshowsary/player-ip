@@ -19,6 +19,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Catalog state for the Movies grid, all scoped to the active playlist:
+ * VOD [categories], a paged/searchable [browser] (Paging 3 over Room), and
+ * the set of bookmarked stream ids. Everything re-resolves when the active
+ * playlist switches.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MoviesViewModel @Inject constructor(
@@ -46,6 +52,7 @@ class MoviesViewModel @Inject constructor(
         .flatMapLatest { contentRepository.bookmarkedIds(it, Bookmark.MEDIA_MOVIE) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    /** Adds or removes the movie's bookmark; [bookmarkedIds] updates reactively via Room. */
     fun toggleBookmark(movie: Movie) {
         viewModelScope.launch {
             contentRepository.toggleBookmark(

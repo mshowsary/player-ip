@@ -2,6 +2,12 @@ package com.novaplay.tv.core
 
 /** Removes provider URLs and common credential fields before an error reaches logs or UI. */
 object SafeErrorMessage {
+    /**
+     * Returns a user-visible message with every URL masked and username/password values
+     * blanked in both query-string and JSON shapes. Masking whole URLs also strips
+     * tokens, MACs, and device ids that ride along in provider endpoints. Blank or
+     * absent messages fall back to [fallback].
+     */
     fun from(error: Throwable?, fallback: String = "Operation failed"): String {
         val raw = error?.message?.takeIf { it.isNotBlank() } ?: fallback
         return raw

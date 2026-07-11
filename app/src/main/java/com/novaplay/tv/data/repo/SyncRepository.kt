@@ -33,24 +33,33 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Observable sync state for the UI; Failed carries a sanitized, user-safe message. */
 sealed interface SyncStatus {
     data object Idle : SyncStatus
     data class Syncing(val step: String) : SyncStatus
     data class Failed(val message: String) : SyncStatus
 }
 
+/** What initiated a sync; the label is recorded in the last-sync summary for diagnostics. */
 enum class SyncTrigger(val label: String) {
     FOREGROUND("Manual"),
     STARTUP("Startup"),
     BACKGROUND("Background"),
 }
 
+// Per-type row counts for one playlist, recorded in the sync summary.
 private data class CatalogCounts(
     val live: Int,
     val movies: Int,
     val series: Int,
 )
 
+/**
+ * Replaces the local catalogue from an Xtream or M3U provider. Downloads are
+ * staged to bounded cache files, then swapped into Room in local-only
+ * transactions so browsing keeps working mid-sync. Sync never crashes the app:
+ * every error is captured and surfaced via [status] and the returned Result.
+ */
 @Singleton
 class SyncRepository @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -65,12 +74,19 @@ class SyncRepository @Inject constructor(
 
     private val syncMutex = Mutex()
 
+    /** Runs a startup-triggered sync only when the last one is older than [maxAgeMs] (12 h default). */
     suspend fun syncIfStale(playlist: Playlist, maxAgeMs: Long = STALE_AFTER_MS) {
         if (System.currentTimeMillis() - playlist.lastSyncEpochMs > maxAgeMs) {
             sync(playlist, SyncTrigger.STARTUP)
         }
     }
 
+    /**
+     * Full catalogue sync, serialized by a mutex so concurrent triggers cannot
+     * interleave. Never throws: failures are logged with sanitized messages
+     * (never provider URLs, which can embed credentials), recorded in the
+     * last-sync summary and emitted as [SyncStatus.Failed].
+     */
     suspend fun sync(
         playlist: Playlist,
         trigger: SyncTrigger = SyncTrigger.FOREGROUND,
@@ -123,6 +139,8 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    // Refreshes account info (best-effort, failures ignored) and then the three
+    // catalogue sections in sequence, updating the visible status per step.
     private suspend fun syncXtream(playlist: Playlist) {
         _status.value = SyncStatus.Syncing("Checking account")
         runCatching { xtream.userInfo(playlist) }.getOrNull()?.userInfo?.let { info ->
@@ -185,6 +203,8 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    // Same stage-then-replace pattern as syncLive: movies stream from the
+    // snapshot into chunked inserts inside a single wipe-and-fill transaction.
     private suspend fun syncMovies(playlist: Playlist) {
         val categories = xtream.vodCategories(playlist)
         val snapshot = newSnapshot("movies", ".json")
@@ -230,6 +250,8 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    // Same stage-then-replace pattern for series; episodes are fetched later,
+    // on demand, from the details screen rather than during sync.
     private suspend fun syncSeries(playlist: Playlist) {
         val categories = xtream.seriesCategories(playlist)
         val snapshot = newSnapshot("series", ".json")
@@ -276,6 +298,8 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    // Inserts live categories and returns remote id -> local row id, used to
+    // resolve each channel's category while streaming the snapshot.
     private suspend fun insertLiveCategories(
         playlistId: Long,
         categories: List<XtreamCategoryDto>,
@@ -289,11 +313,15 @@ class SyncRepository @Inject constructor(
         return entities.map { it.remoteId }.zip(ids).toMap()
     }
 
+    // Skips categories without an id; a missing name gets a readable fallback.
     private inline fun <T> XtreamCategoryDto.toEntityOrNull(build: (String, String) -> T): T? {
         val id = categoryId ?: return null
         return build(id, categoryName ?: "Category $id")
     }
 
+    // M3U sources map onto the live tables only. The playlist is snapshotted to
+    // disk first, then parsed into channels with categories created lazily per
+    // group; stream ids are derived so bookmarks survive re-syncs.
     private suspend fun syncM3u(playlist: Playlist) {
         val opened = playlistSecrets.open(playlist)
         val url = opened.url ?: error("M3U playlist has no URL")
@@ -347,6 +375,8 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    // Creates a staging temp file in the snapshot cache, first purging leftovers
+    // older than the TTL (e.g. from a crash mid-sync) so the cache stays bounded.
     private fun newSnapshot(prefix: String, suffix: String): File {
         val directory = File(context.cacheDir, "catalog_snapshots").apply { mkdirs() }
         directory.listFiles()
@@ -367,6 +397,7 @@ class SyncRepository @Inject constructor(
         sqlDb.query("PRAGMA wal_checkpoint(PASSIVE)").close()
     }
 
+    // Counts the freshly installed rows on Dispatchers.IO for the sync summary.
     private suspend fun catalogCounts(playlistId: Long): CatalogCounts = withContext(Dispatchers.IO) {
         CatalogCounts(
             live = count("live_channels", playlistId),
@@ -375,6 +406,8 @@ class SyncRepository @Inject constructor(
         )
     }
 
+    // Raw COUNT(*) shared across the catalogue tables; blocking, so callers
+    // must already be on an IO dispatcher.
     private fun count(table: String, playlistId: Long): Int {
         val query = SimpleSQLiteQuery(
             "SELECT COUNT(*) FROM $table WHERE playlistId = ?",

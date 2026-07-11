@@ -73,6 +73,12 @@ import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
+/**
+ * Live TV browser: category rail (chips on compact widths) beside a paged
+ * channel list. Remote number keys buffer digits and jump the list to that
+ * channel number; group changes reset the scroll, and focusRestorer returns
+ * D-pad focus to the last-focused row when coming back from the player.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun LiveScreen(
@@ -222,6 +228,11 @@ fun LiveScreen(
     }
 }
 
+/**
+ * Vertical category list for wide layouts: Search, All, Bookmarks, Recently
+ * Viewed, then the provider categories. On TV it claims initial focus exactly
+ * once per back-stack entry so focus restoration wins on return.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun CategoryRail(
@@ -372,6 +383,7 @@ fun CategoryChipsRow(
     }
 }
 
+// Focusable pill container for a single chip in the compact strip.
 @Composable
 private fun CategoryChip(
     selected: Boolean,
@@ -405,6 +417,7 @@ private fun CategoryChip(
     }
 }
 
+// Single-line chip caption, tinted primary while its chip is selected.
 @Composable
 private fun ChipLabel(text: String, selected: Boolean) {
     Text(
@@ -420,6 +433,8 @@ private fun ChipLabel(text: String, selected: Boolean) {
     )
 }
 
+// Full-width focusable entry in the category rail; the selected row shows a
+// primary indicator bar at its leading edge.
 @Composable
 private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
     NovaClickable(
@@ -459,6 +474,11 @@ private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * One channel entry: number, logo, name and bookmark state. OK/click plays
+ * the channel; long-press OK (or tapping the icon on touch) toggles the
+ * bookmark.
+ */
 @Composable
 private fun ChannelRow(
     channel: LiveChannel,
@@ -544,6 +564,7 @@ fun BookmarkToggle(
     }
 }
 
+// Shimmer placeholder rows shown while the first channel page loads.
 @Composable
 private fun ChannelListSkeleton() {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -662,6 +683,7 @@ fun SearchField(
     }
 }
 
+// Maps number-row and numpad keys to their digit for channel-number entry.
 private fun Key.toDigitOrNull(): Char? = when (this) {
     Key.Zero, Key.NumPad0 -> '0'
     Key.One, Key.NumPad1 -> '1'

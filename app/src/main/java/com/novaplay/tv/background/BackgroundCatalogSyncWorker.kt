@@ -13,6 +13,11 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 
+/**
+ * Manual dependency lookup for [BackgroundCatalogSyncWorker]: WorkManager constructs
+ * workers reflectively outside Hilt's graph, so repositories are fetched per run
+ * through this entry point instead of constructor injection.
+ */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 interface BackgroundSyncEntryPoint {
@@ -21,11 +26,20 @@ interface BackgroundSyncEntryPoint {
     fun syncRepository(): SyncRepository
 }
 
+/**
+ * Headless periodic refresh of managed access and the active playlist's catalogue.
+ * Scheduled by [BackgroundSyncScheduler]; all errors stay in diagnostics, never the UI.
+ */
 class BackgroundCatalogSyncWorker(
     appContext: Context,
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
 
+    /**
+     * Refreshes activation state (best effort) then syncs the active playlist, if any.
+     * Retries up to [MAX_RETRIES] with backoff; after that it still reports success so
+     * the periodic chain stays scheduled, with the outcome string recorded for diagnostics.
+     */
     override suspend fun doWork(): Result {
         val dependencies = EntryPointAccessors.fromApplication(
             applicationContext,

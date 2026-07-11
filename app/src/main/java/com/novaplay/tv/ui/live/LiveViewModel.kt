@@ -32,12 +32,19 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+// Combined pager key: any change in playlist, category or query swaps the
+// paging source via flatMapLatest.
 private data class BrowseKey(
     val playlistId: Long,
     val categoryId: Long?,
     val searchQuery: String?, // null = browsing, non-null = searching
 )
 
+/**
+ * State holder for the Live browser: paged channel lists per category,
+ * FTS-backed search with a 300 ms debounce, bookmark toggles, and remote
+ * digit entry that resolves a channel number to its list position.
+ */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class LiveViewModel @Inject constructor(
@@ -96,6 +103,7 @@ class LiveViewModel @Inject constructor(
         .flatMapLatest { contentRepository.bookmarkedIds(it, Bookmark.MEDIA_LIVE) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
 
+    /** Adds or removes the channel from bookmarks; [bookmarkedIds] updates reactively. */
     fun toggleBookmark(channel: LiveChannel) {
         viewModelScope.launch {
             contentRepository.toggleBookmark(
@@ -106,21 +114,25 @@ class LiveViewModel @Inject constructor(
         }
     }
 
+    /** Switches browsing to [categoryId] (null = All) and leaves search mode. */
     fun selectCategory(categoryId: Long?) {
         _searchActive.value = false
         _searchQuery.value = ""
         _selectedCategoryId.value = categoryId
     }
 
+    /** Enters search mode; queries only take effect from two characters on. */
     fun openSearch() {
         _searchActive.value = true
     }
 
+    /** Leaves search mode and clears the query, returning to category browsing. */
     fun closeSearch() {
         _searchActive.value = false
         _searchQuery.value = ""
     }
 
+    /** Updates the raw search text; it reaches [channels] via the debounced effective query. */
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
     }
@@ -135,6 +147,11 @@ class LiveViewModel @Inject constructor(
 
     private var digitJob: Job? = null
 
+    /**
+     * Buffers a remote-control digit (last four kept). After 1.4 s of key
+     * inactivity the number commits: an indexed DB lookup resolves it to a
+     * list position emitted on [jumpToIndex]. Ignored while search is active.
+     */
     fun onDigit(digit: Char) {
         if (_searchActive.value) return
         _digitBuffer.value = (_digitBuffer.value + digit).takeLast(4)

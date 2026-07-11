@@ -18,6 +18,12 @@ data class CatalogLayoutSpec(
     val liveLogoSizeDp: Int,
 )
 
+/**
+ * Pure resolver from (uiMode, widthClass, widthDp) to catalog sizing — plain
+ * Kotlin so it is unit-testable without Compose. TV wins over width class and
+ * gets the widest rail and 10-foot sizes; compact touch drops the rail and
+ * shrinks posters further below 380 dp; medium and expanded scale up in between.
+ */
 fun calculateCatalogLayoutSpec(
     uiMode: ResolvedUiMode,
     widthClass: WindowWidthClass,
@@ -60,6 +66,7 @@ fun calculateCatalogLayoutSpec(
     )
 }
 
+/** Composable convenience: resolves the spec from the current [appLayoutInfo]. */
 @Composable
 fun catalogLayoutSpec(): CatalogLayoutSpec {
     val info = appLayoutInfo()

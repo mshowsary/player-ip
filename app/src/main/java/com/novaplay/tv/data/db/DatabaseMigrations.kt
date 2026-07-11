@@ -6,7 +6,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 /** Database migrations kept in one place so release builds never wipe user data. */
 object DatabaseMigrations {
 
+    /**
+     * v2 -> v3: re-keys watch_progress from local Room row ids to stable provider
+     * ids (movie streamId / remoteEpisodeId) so Resume survives catalogue re-syncs.
+     */
     val MIGRATION_2_3 = object : Migration(2, 3) {
+        // Rebuild-and-copy: SQLite cannot change a composite primary key in place.
         override fun migrate(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """

@@ -94,6 +94,9 @@ fun PosterCard(
     }
 }
 
+// 48 dp corner badge that toggles the bookmark. Deliberately kept out of the
+// TV focus chain (raw tap handler, no focusable) so D-pad traversal skips it;
+// remotes long-press the card instead.
 @Composable
 private fun PosterBookmarkButton(
     bookmarked: Boolean,
@@ -136,6 +139,7 @@ private fun PosterBookmarkButton(
     }
 }
 
+/** One row of shimmering 2:3 poster placeholders, shown while a grid's first page loads. */
 @Composable
 fun PosterGridSkeleton(
     columns: Int = 5,

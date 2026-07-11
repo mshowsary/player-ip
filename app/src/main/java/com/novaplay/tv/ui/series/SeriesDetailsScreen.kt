@@ -53,6 +53,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Observes one series (from the seriesId nav argument): episodes grouped by
+ * season, per-episode watch progress keyed by remote episode id, and the
+ * selected season. On entry it refreshes plot/episodes from Xtream
+ * get_series_info; [loadingEpisodes] gates the skeleton until that finishes.
+ */
 @HiltViewModel
 class SeriesDetailsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -86,11 +92,18 @@ class SeriesDetailsViewModel @Inject constructor(
         }
     }
 
+    /** Sets the season whose episodes the screen lists; unset defaults to the first season. */
     fun selectSeason(season: Int) {
         _selectedSeason.value = season
     }
 }
 
+/**
+ * Series detail page: dimmed backdrop, poster, plot, season tabs, and the
+ * episode list for the selected season. Season row and episode list use
+ * focusRestorer so D-pad focus returns to the last item when re-entering.
+ * Renders nothing until the series row arrives from Room.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SeriesDetailsScreen(
@@ -320,11 +333,13 @@ fun SeriesDetailsScreen(
     }
 }
 
+// Same rule as movies: resume once 60 s are watched and under 95 % complete.
 private fun WatchProgress?.isEpisodeResumable(): Boolean {
     if (this == null || durationMs <= 0) return false
     return positionMs >= 60_000 && positionMs < durationMs * 95 / 100
 }
 
+/** Pill-shaped season selector; the selected tab is tinted with the primary color. */
 @Composable
 private fun SeasonTab(season: Int, selected: Boolean, onClick: () -> Unit) {
     NovaClickable(
@@ -350,6 +365,11 @@ private fun SeasonTab(season: Int, selected: Boolean, onClick: () -> Unit) {
     }
 }
 
+/**
+ * Focusable episode row: thumbnail, episode number, title, and a
+ * duration/watched metadata line, with a thin bottom progress bar once more
+ * than 1 % has been watched.
+ */
 @Composable
 private fun EpisodeRow(
     episode: Episode,
@@ -434,6 +454,7 @@ private fun EpisodeRow(
     }
 }
 
+/** Four shimmering placeholder rows shown while episodes are still refreshing. */
 @Composable
 private fun EpisodeListSkeleton() {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {

@@ -20,6 +20,11 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Read-side facade over the synced catalogue: paged browsing, search, stream
+ * URL resolution, bookmarks/recents and watch progress. All reads come from
+ * Room; only the on-demand detail refreshes touch the network.
+ */
 @Singleton
 class ContentRepository @Inject constructor(
     private val db: NovaDatabase,
@@ -27,10 +32,12 @@ class ContentRepository @Inject constructor(
 ) {
     val activePlaylist: Flow<Playlist?> = db.playlistDao().observeActive()
 
+    /** One-shot lookup of the active playlist; null when none is selected. */
     suspend fun getActivePlaylist(): Playlist? = db.playlistDao().getActive()
 
     val allPlaylists: Flow<List<Playlist>> = db.playlistDao().observeAll()
 
+    /** Makes [id] the single active playlist; observers of [activePlaylist] re-emit. */
     suspend fun setActivePlaylist(id: Long) = db.playlistDao().setActive(id)
 
     // Deleting cascades that playlist's catalog; stable user state has no FK so
@@ -51,8 +58,13 @@ class ContentRepository @Inject constructor(
 
     // ---- Live ----
 
+    /** Live categories for the rail, emitted in provider sort order. */
     fun liveCategories(playlistId: Long) = db.liveDao().categories(playlistId)
 
+    /**
+     * Windowed paging stream of channels. A null category means "all"; the
+     * negative virtual ids map to the bookmarks and recents rails.
+     */
     fun channelsPager(playlistId: Long, categoryId: Long?): Flow<PagingData<LiveChannel>> =
         pager {
             when (categoryId) {
@@ -63,21 +75,27 @@ class ContentRepository @Inject constructor(
             }
         }
 
+    /** Paged FTS search over channels; [query] must be [ftsPrefixQuery] output. */
     fun searchChannelsPager(playlistId: Long, query: String): Flow<PagingData<LiveChannel>> =
         pager { db.liveDao().search(playlistId, query) }
 
+    /** Channel lookup by local row id; null if the row was replaced by a sync. */
     suspend fun channelById(id: Long): LiveChannel? = db.liveDao().byId(id)
 
+    /** Live category lookup by local row id, for restoring rail state. */
     suspend fun liveCategoryById(id: Long) = db.liveDao().categoryById(id)
 
+    /** Next channel for zapping within the category (or all); wraps to the first at the end. */
     suspend fun nextChannel(channel: LiveChannel, categoryId: Long?): LiveChannel? =
         db.liveDao().nextChannel(channel.playlistId, categoryId, channel.num, channel.id)
             ?: db.liveDao().firstChannel(channel.playlistId, categoryId)
 
+    /** Previous channel for zapping; wraps to the last at the start. */
     suspend fun prevChannel(channel: LiveChannel, categoryId: Long?): LiveChannel? =
         db.liveDao().prevChannel(channel.playlistId, categoryId, channel.num, channel.id)
             ?: db.liveDao().lastChannel(channel.playlistId, categoryId)
 
+    /** Zero-based list position of a channel number, used to scroll the grid to it. */
     suspend fun positionOfChannelNum(playlistId: Long, categoryId: Long?, num: Int): Int =
         db.liveDao().positionOfNum(playlistId, categoryId, num)
 
@@ -97,8 +115,10 @@ class ContentRepository @Inject constructor(
 
     // ---- Movies ----
 
+    /** VOD categories for the movie rail, in provider sort order. */
     fun vodCategories(playlistId: Long) = db.movieDao().categories(playlistId)
 
+    /** Paged movie stream; null category is "all", virtual ids select bookmarks/recents. */
     fun moviesPager(playlistId: Long, categoryId: Long?): Flow<PagingData<Movie>> =
         pager {
             when (categoryId) {
@@ -109,13 +129,21 @@ class ContentRepository @Inject constructor(
             }
         }
 
+    /** Paged FTS search over movies; [query] must be [ftsPrefixQuery] output. */
     fun searchMoviesPager(playlistId: Long, query: String): Flow<PagingData<Movie>> =
         pager { db.movieDao().search(playlistId, query) }
 
+    /** Movie lookup by local row id; null if the row was replaced by a sync. */
     suspend fun movieById(id: Long): Movie? = db.movieDao().byId(id)
 
+    /** Emits the movie row on every change (e.g. after [refreshMovieDetails]), or null if gone. */
     fun observeMovie(id: Long): Flow<Movie?> = db.movieDao().observeById(id)
 
+    /**
+     * Fetches plot/genre/backdrop details from Xtream on demand and writes them
+     * into the row observers already watch. Silently no-ops for non-Xtream
+     * playlists or an empty response; network errors come back as a failed Result.
+     */
     suspend fun refreshMovieDetails(movie: Movie): Result<Unit> = runCatching {
         val playlist = db.playlistDao().getById(movie.playlistId) ?: error("Playlist missing")
         if (playlist.type != Playlist.TYPE_XTREAM) return@runCatching
@@ -131,6 +159,7 @@ class ContentRepository @Inject constructor(
         )
     }
 
+    /** Builds the playable URL for a movie; null if its playlist no longer exists. */
     suspend fun movieStreamUrl(movie: Movie): String? {
         val playlist = db.playlistDao().getById(movie.playlistId) ?: return null
         return xtream.movieUrl(playlist, movie.streamId, movie.containerExtension)
@@ -138,8 +167,10 @@ class ContentRepository @Inject constructor(
 
     // ---- Series ----
 
+    /** Series categories for the rail, in provider sort order. */
     fun seriesCategories(playlistId: Long) = db.seriesDao().categories(playlistId)
 
+    /** Paged series stream; null category is "all", virtual ids select bookmarks/recents. */
     fun seriesPager(playlistId: Long, categoryId: Long?): Flow<PagingData<Series>> =
         pager {
             when (categoryId) {
@@ -150,15 +181,20 @@ class ContentRepository @Inject constructor(
             }
         }
 
+    /** Paged FTS search over series; [query] must be [ftsPrefixQuery] output. */
     fun searchSeriesPager(playlistId: Long, query: String): Flow<PagingData<Series>> =
         pager { db.seriesDao().search(playlistId, query) }
 
+    /** Series lookup by local row id; null if the row was replaced by a sync. */
     suspend fun seriesById(id: Long): Series? = db.seriesDao().byId(id)
 
+    /** Emits the series row on every change (e.g. after [refreshSeriesInfo]), or null if gone. */
     fun observeSeries(id: Long): Flow<Series?> = db.seriesDao().observeById(id)
 
+    /** Emits the cached episode list, updating when [refreshSeriesInfo] replaces it. */
     fun episodes(seriesLocalId: Long): Flow<List<Episode>> = db.episodeDao().episodes(seriesLocalId)
 
+    /** Episode lookup by local row id, used when resuming playback from a route. */
     suspend fun episodeById(id: Long): Episode? = db.episodeDao().byId(id)
 
     // Episodes are fetched on demand when a details screen opens, replacing any
@@ -196,6 +232,7 @@ class ContentRepository @Inject constructor(
         }
     }
 
+    /** Builds the playable URL for an episode; null if its playlist no longer exists. */
     suspend fun episodeStreamUrl(episode: Episode): String? {
         val playlist = db.playlistDao().getById(episode.playlistId) ?: return null
         return xtream.episodeUrl(playlist, episode.remoteEpisodeId, episode.containerExtension)
@@ -207,6 +244,7 @@ class ContentRepository @Inject constructor(
     fun bookmarkedIds(playlistId: Long, mediaType: String): Flow<Set<Long>> =
         db.bookmarkDao().observeIds(playlistId, mediaType).map { it.toSet() }
 
+    /** Adds or removes a bookmark keyed by remote id, so it survives catalogue replacement. */
     suspend fun toggleBookmark(playlistId: Long, mediaType: String, remoteId: Long) {
         val dao = db.bookmarkDao()
         if (dao.exists(playlistId, mediaType, remoteId)) {
@@ -223,6 +261,7 @@ class ContentRepository @Inject constructor(
         }
     }
 
+    /** Stamps an item as recently viewed and trims history to the newest [RECENTS_KEPT] per type. */
     suspend fun recordRecentView(playlistId: Long, mediaType: String, remoteId: Long) {
         db.recentViewDao().upsert(
             RecentView(
@@ -246,6 +285,8 @@ class ContentRepository @Inject constructor(
             else -> null
         }
 
+    // Emits the stored progress for the item (null when none, or a constant
+    // null flow for unknown media types), updating live as playback saves.
     fun observeWatchProgress(mediaType: String, mediaId: Long): Flow<WatchProgress?> =
         when (mediaType) {
             WatchProgress.MEDIA_MOVIE -> db.watchProgressDao().observeForMovie(mediaId)
@@ -253,11 +294,14 @@ class ContentRepository @Inject constructor(
             else -> flowOf(null)
         }
 
+    /** Emits progress rows for all episodes of a series, driving the "continue watching" badges. */
     fun watchProgressForSeries(seriesLocalId: Long): Flow<List<WatchProgress>> =
         db.watchProgressDao().forSeries(seriesLocalId)
 
+    /** Upserts playback position keyed by (playlistId, remote id), replacing any earlier record. */
     suspend fun saveWatchProgress(progress: WatchProgress) = db.watchProgressDao().upsert(progress)
 
+    // Wraps a PagingSource factory in a Pager with the shared windowed config.
     private fun <T : Any> pager(source: () -> androidx.paging.PagingSource<Int, T>): Flow<PagingData<T>> =
         Pager(config = PAGING_CONFIG, pagingSourceFactory = source).flow
 

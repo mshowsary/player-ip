@@ -34,6 +34,7 @@ import com.novaplay.tv.ui.theme.WindowWidthClass
 import com.novaplay.tv.ui.theme.appLayoutInfo
 import com.novaplay.tv.ui.theme.isTvDevice
 
+/** A top-level shell entry; [managedFeature] ties it to the access policy (null = always visible). */
 private data class ShellDestination(
     val route: String,
     val label: String,
@@ -49,8 +50,10 @@ private val topLevelDestinations = listOf(
     ShellDestination(Routes.SETTINGS, "Settings", Icons.Default.Settings),
 )
 
+/** True when the route is a top-level shell destination — only those get nav chrome on touch. */
 fun isTopLevelRoute(route: String?): Boolean = topLevelDestinations.any { it.route == route }
 
+// Hides destinations the managed-access policy denies; unmanaged entries always pass.
 private fun visibleDestinations(policy: ManagedAccessPolicy): List<ShellDestination> =
     topLevelDestinations.filter { destination ->
         destination.managedFeature?.let(policy::allows) ?: true
@@ -97,6 +100,7 @@ fun AdaptiveAppShell(
     }
 }
 
+/** Compact-width bottom navigation bar: evenly weighted icon-over-label buttons. */
 @Composable
 private fun TouchBottomBar(
     destinations: List<ShellDestination>,
@@ -125,6 +129,10 @@ private fun TouchBottomBar(
     }
 }
 
+/**
+ * Side navigation rail for medium and expanded widths; expanded windows widen the rail
+ * and show text labels next to the icons.
+ */
 @Composable
 private fun TouchNavigationRail(
     destinations: List<ShellDestination>,
@@ -155,6 +163,10 @@ private fun TouchNavigationRail(
     }
 }
 
+/**
+ * One shell destination button: icon-over-label in the bottom bar (compact), icon beside an
+ * optional label in the rail. Selection tints primary; focus scales slightly for D-pad use.
+ */
 @Composable
 private fun ShellButton(
     destination: ShellDestination,

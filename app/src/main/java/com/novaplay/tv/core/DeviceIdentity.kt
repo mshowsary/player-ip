@@ -17,12 +17,17 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Identity triple presented to the portal: installation UUID, display MAC, and pairing key. */
 data class DeviceIdentityInfo(
     val deviceId: String,
     val mac: String,
     val deviceKey: String,
 )
 
+/**
+ * Resolves and caches this installation's portal identity. Each value is generated
+ * at most once, persisted in [AppPreferences], and reused for the app's lifetime.
+ */
 @Singleton
 class DeviceIdentity @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -33,6 +38,11 @@ class DeviceIdentity @Inject constructor(
     @Volatile
     private var cached: DeviceIdentityInfo? = null
 
+    /**
+     * Returns the identity, generating and persisting it on first call. Double-checked
+     * under a mutex so concurrent callers can never mint two identities; generation
+     * runs on Dispatchers.IO because it touches DataStore, network interfaces, and sysfs.
+     */
     suspend fun get(): DeviceIdentityInfo = cached ?: mutex.withLock {
         cached ?: withContext(Dispatchers.IO) {
             // The installation UUID is the primary portal identity. It avoids
@@ -49,6 +59,7 @@ class DeviceIdentity @Inject constructor(
     // Legacy display/support identifier. New portal pairing uses deviceId and
     // a server-issued one-time code, but old installations keep their MAC value
     // so the migration does not break the current mock/legacy portal contract.
+    // Falls through: eth0 -> wlan0 -> /sys/class/net/eth0/address -> ANDROID_ID pseudo-MAC.
     private fun resolveMac(): String {
         for (ifaceName in listOf("eth0", "wlan0")) {
             runCatching {
@@ -68,11 +79,14 @@ class DeviceIdentity @Inject constructor(
         return pseudoMacFromAndroidId()
     }
 
+    // Rejects malformed values, all-zeros, and Android's privacy placeholder 02:00:00:00:00:00.
     private fun isUsableMac(mac: String): Boolean =
         MAC_REGEX.matches(mac) &&
             mac != "00:00:00:00:00:00" &&
             mac != "02:00:00:00:00:00"
 
+    // Last-resort MAC: first six bytes of SHA-256(ANDROID_ID), formatted like a real one.
+    // Stable per device without ever exposing the raw ANDROID_ID to the portal.
     @SuppressLint("HardwareIds")
     private fun pseudoMacFromAndroidId(): String {
         val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
@@ -81,6 +95,8 @@ class DeviceIdentity @Inject constructor(
         return digest.take(6).joinToString(":") { "%02X".format(it) }
     }
 
+    // Human-readable pairing key from SecureRandom, using an alphabet without 0/O/1/I
+    // so users can read it off a TV screen or over the phone without ambiguity.
     private fun generateDeviceKey(): String {
         val random = SecureRandom()
         return buildString(KEY_LENGTH) {

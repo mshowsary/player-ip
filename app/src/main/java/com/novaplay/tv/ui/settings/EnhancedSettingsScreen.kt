@@ -25,6 +25,11 @@ import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
+/**
+ * Settings entry point that layers a "Sync & health" button over [PolishedSettingsScreen].
+ * The button sits at the bottom end of the screen and opens the performance and
+ * diagnostics dialog on top of the regular settings panels.
+ */
 @Composable
 fun EnhancedSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
@@ -52,6 +57,11 @@ fun EnhancedSettingsScreen(
     }
 }
 
+/**
+ * Dialog hosting [PerformanceSettingsPanel] wired to the shared view model. Refreshes
+ * diagnostics when opened, caps its height so the content scrolls on small screens,
+ * and on TV moves initial focus to the first background-sync choice.
+ */
 @Composable
 private fun PerformanceSettingsDialog(
     viewModel: SettingsViewModel,

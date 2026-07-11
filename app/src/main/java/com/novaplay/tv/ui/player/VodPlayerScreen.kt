@@ -73,6 +73,14 @@ import com.novaplay.tv.ui.theme.NovaAccentGradient
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 
+/**
+ * Full-screen VOD player: video surface, buffering spinner (with recovery message),
+ * auto-hiding controls overlay, error state, and audio/subtitle selection dialogs.
+ * On TV, focus follows the overlay — play/pause when controls show, an invisible root
+ * when hidden; with controls hidden, D-pad LEFT/RIGHT seek directly (accelerating
+ * while held) and any other key just reveals the controls. Pauses on lifecycle stop
+ * and resumes on start if playback was active.
+ */
 @Composable
 fun VodPlayerScreen(
     viewModel: VodPlayerViewModel = hiltViewModel(),
@@ -226,6 +234,11 @@ fun VodPlayerScreen(
     }
 }
 
+/**
+ * Gradient-scrimmed controls: title/episode tag on top; seek bar, transport buttons,
+ * position readout and track shortcuts on the bottom. The audio button only appears
+ * when the stream offers a real choice (> 1 track), subtitles whenever any exist.
+ */
 @Composable
 private fun VodControlsOverlay(
     state: VodPlayerUiState,
@@ -349,6 +362,7 @@ private fun VodControlsOverlay(
     }
 }
 
+/** Circular focusable icon button for the transport row; fills with the accent colour and scales up on focus. */
 @Composable
 private fun PlayerIconButton(
     icon: ImageVector,
@@ -377,6 +391,12 @@ private fun PlayerIconButton(
     }
 }
 
+/**
+ * Focusable progress bar. When focused, D-pad LEFT/RIGHT seek ±10 s via [onSeek]
+ * (accelerating while the key repeats); on touch, taps and horizontal drags scrub
+ * to a fraction of the duration — the drag preview is local and only committed on
+ * release. Track and thumb grow while focused or scrubbing.
+ */
 @Composable
 private fun SeekBar(
     positionMs: Long,
@@ -470,6 +490,11 @@ private fun SeekBar(
     }
 }
 
+/**
+ * Dialog listing audio or subtitle tracks; an "Off" row is prepended when [allowOff]
+ * (subtitles only) and selecting it reports null. On TV, initial focus lands on the
+ * currently active row so a single OK press confirms the existing choice.
+ */
 @Composable
 private fun TrackSelectionDialog(
     title: String,
@@ -527,6 +552,7 @@ private fun TrackSelectionDialog(
     }
 }
 
+/** Single focusable dialog row: track label plus a check mark on the active choice. */
 @Composable
 private fun TrackRow(
     label: String,

@@ -14,6 +14,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import javax.inject.Inject
 
+/**
+ * Read-only state for the hub screen: the active [playlist] (null until
+ * loaded), live [syncStatus] for the footer, and the [managedAccess] policy
+ * used to filter which section cards are shown.
+ */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     contentRepository: ContentRepository,

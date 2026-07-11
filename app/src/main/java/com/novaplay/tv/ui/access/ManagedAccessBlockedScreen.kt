@@ -34,6 +34,11 @@ import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
+/**
+ * Full-screen notice shown when the managed policy blocks the device or the
+ * requested feature (Live/Movies/Series). Shows the policy message and support
+ * code when present; on TV, initial focus lands on the "Open playlists" button.
+ */
 @Composable
 fun ManagedAccessBlockedScreen(
     feature: ManagedFeature,
@@ -134,6 +139,8 @@ fun ManagedAccessBlockedScreen(
     }
 }
 
+// Device-wide blocks use the policy's own status label; otherwise name the
+// specific feature that is unavailable.
 private fun blockedTitle(feature: ManagedFeature, policy: ManagedAccessPolicy): String {
     if (policy.isBlocked) return policy.statusLabel()
     return when (feature) {

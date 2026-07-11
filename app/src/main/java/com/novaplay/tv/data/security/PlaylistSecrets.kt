@@ -24,6 +24,11 @@ class PlaylistSecrets @Inject constructor(
     private val db: NovaDatabase,
 ) {
 
+    /**
+     * Returns a copy with server/username/password/url encrypted for storage.
+     * Idempotent: values already carrying the prefix marker pass through untouched,
+     * so double-sealing (and thus double-encryption) is impossible.
+     */
     fun seal(playlist: Playlist): Playlist = playlist.copy(
         server = sealValue(playlist.server),
         username = sealValue(playlist.username),
@@ -31,6 +36,10 @@ class PlaylistSecrets @Inject constructor(
         url = sealValue(playlist.url),
     )
 
+    /**
+     * Returns a copy with the credential fields decrypted for use. Legacy plaintext
+     * values (no prefix) pass through unchanged; see [openValue] for failure behavior.
+     */
     fun open(playlist: Playlist): Playlist = playlist.copy(
         server = openValue(playlist.server),
         username = openValue(playlist.username),
@@ -38,6 +47,10 @@ class PlaylistSecrets @Inject constructor(
         url = openValue(playlist.url),
     )
 
+    /**
+     * Launch-time migration: seals any rows still holding plaintext credentials.
+     * Safe to run on every startup — rows already sealed are filtered out first.
+     */
     suspend fun migrateStoredPlaylists() {
         val dao = db.playlistDao()
         dao.getAll()
@@ -45,6 +58,7 @@ class PlaylistSecrets @Inject constructor(
             .forEach { dao.update(seal(it)) }
     }
 
+    // A row needs sealing when any credential field is non-empty and not yet prefix-marked.
     private fun needsProtection(playlist: Playlist): Boolean = listOf(
         playlist.server,
         playlist.username,
@@ -52,6 +66,8 @@ class PlaylistSecrets @Inject constructor(
         playlist.url,
     ).any { value -> !value.isNullOrEmpty() && !value.startsWith(PREFIX) }
 
+    // AES-GCM with a fresh random IV per value; stored as PREFIX + base64(iv || ciphertext).
+    // The prefix check up front is what makes sealing idempotent.
     private fun sealValue(value: String?): String? {
         if (value.isNullOrEmpty() || value.startsWith(PREFIX)) return value
 
@@ -64,6 +80,8 @@ class PlaylistSecrets @Inject constructor(
         return PREFIX + Base64.encodeToString(payload, Base64.NO_WRAP)
     }
 
+    // Reverses sealValue. Decryption failure (e.g. Keystore key lost after a backup restore
+    // to another device) surfaces as a user-actionable message, never raw cipher errors.
     private fun openValue(value: String?): String? {
         if (value.isNullOrEmpty() || !value.startsWith(PREFIX)) return value
 
@@ -83,6 +101,8 @@ class PlaylistSecrets @Inject constructor(
         }
     }
 
+    // Lazily creates the non-exportable Keystore AES key; synchronized so concurrent
+    // first-time callers cannot race to generate two keys under the same alias.
     @Synchronized
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }

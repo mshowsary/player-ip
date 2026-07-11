@@ -13,6 +13,7 @@ import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** One channel parsed from an #EXTINF/URL line pair; optional fields come from EXTINF attributes. */
 data class M3uEntry(
     val name: String,
     val logoUrl: String?,
@@ -21,6 +22,10 @@ data class M3uEntry(
     val url: String,
 )
 
+/**
+ * Line-by-line streaming M3U parser: entries are emitted to a callback one at a
+ * time, so arbitrarily large playlists are never materialized in memory.
+ */
 @Singleton
 class M3uParser @Inject constructor(
     private val okHttpClient: OkHttpClient,
@@ -70,6 +75,8 @@ class M3uParser @Inject constructor(
         file.bufferedReader().use { reader -> parseReader(reader, onEntry) }
     }
 
+    // Core state machine: an #EXTINF line arms `pending`; the next non-comment line is
+    // its URL. Nameless entries are dropped so dirty rows never abort the whole playlist.
     private suspend fun parseReader(reader: BufferedReader, onEntry: suspend (M3uEntry) -> Unit) {
         var pending: PendingEntry? = null
         while (true) {
@@ -97,6 +104,8 @@ class M3uParser @Inject constructor(
         }
     }
 
+    // Opens a buffered reader over a file: URI or an HTTP body; failed responses are
+    // closed before throwing so connections are not leaked.
     private fun openReader(url: String): BufferedReader = when {
         url.startsWith("file:") -> File(URI(url)).bufferedReader()
         else -> {
@@ -114,6 +123,8 @@ class M3uParser @Inject constructor(
         }
     }
 
+    // Streams input to output, failing once `limit` bytes are exceeded so a hostile or
+    // endless playlist can't fill the disk.
     private fun copyWithLimit(input: InputStream, output: OutputStream, limit: Long) {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
@@ -126,8 +137,12 @@ class M3uParser @Inject constructor(
         }
     }
 
+    // #EXTINF metadata waiting for its URL line.
     private data class PendingEntry(val name: String, val attributes: Map<String, String>)
 
+    // Pulls key="value" attributes and the display name after the last comma. The comma is
+    // searched after the last quote because quoted attribute values may contain commas;
+    // an empty name falls back to tvg-name.
     private fun parseExtInf(line: String): PendingEntry {
         val attributes = ATTRIBUTE_REGEX.findAll(line)
             .associate { it.groupValues[1].lowercase() to it.groupValues[2] }

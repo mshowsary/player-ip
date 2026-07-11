@@ -50,6 +50,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Observes one movie (from the movieId nav argument) and its watch progress
+ * from Room, and refreshes plot/genre/duration/backdrop from Xtream
+ * get_vod_info in the background.
+ */
 @HiltViewModel
 class MovieDetailsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -72,6 +77,12 @@ class MovieDetailsViewModel @Inject constructor(
     }
 }
 
+/**
+ * Movie detail page: dimmed backdrop, poster, metadata line, plot, and
+ * Play/Resume actions. When progress is resumable, Resume leads and takes
+ * initial TV focus (Play otherwise). Renders nothing until the movie row
+ * arrives from Room.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MovieDetailsScreen(
@@ -234,6 +245,7 @@ fun WatchProgress?.isResumable(): Boolean {
     return positionMs >= 60_000 && positionMs < durationMs * 95 / 100
 }
 
+/** Formats a millisecond position as h:mm:ss, or m:ss under one hour. */
 fun formatPosition(ms: Long): String {
     val totalSecs = ms / 1000
     val h = totalSecs / 3600
@@ -242,6 +254,7 @@ fun formatPosition(ms: Long): String {
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
 
+// 5400 -> "1h 30min"; sub-hour durations drop the hour part.
 private fun formatDuration(secs: Int): String {
     val h = secs / 3600
     val m = (secs % 3600) / 60

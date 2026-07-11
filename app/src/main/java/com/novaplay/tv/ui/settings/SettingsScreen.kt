@@ -58,6 +58,12 @@ import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
+/**
+ * Original flat settings screen: subtitle styling and general options as plain lists.
+ * Compact widths stack both sections in one column; wider layouts show them side by
+ * side. On TV, initial focus goes to the first text-size chip and each column
+ * restores focus on re-entry.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun SettingsScreen(
@@ -114,6 +120,10 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * Emits the subtitle appearance items — live preview plus size/color/background/edge
+ * choice rows — into the enclosing LazyColumn. [firstFocus] targets the first size chip.
+ */
 @OptIn(ExperimentalComposeUiApi::class)
 private fun LazyListScope.subtitleSection(
     subtitleStyle: SubtitleStyle,
@@ -162,6 +172,10 @@ private fun LazyListScope.subtitleSection(
     }
 }
 
+/**
+ * Emits the general items into the enclosing LazyColumn: interface mode, live stream
+ * format, cache and re-sync actions with inline sync status, and the device identifiers.
+ */
 private fun LazyListScope.generalSection(
     uiMode: UiModePreference,
     liveFormat: LiveFormat,
@@ -247,6 +261,11 @@ private fun LazyListScope.generalSection(
     }
 }
 
+/**
+ * Renders a sample subtitle line over a dark gradient so style changes preview
+ * instantly. Text size is derived from a 720p reference height, and the OUTLINE
+ * edge is simulated by a stroked black copy drawn beneath the text.
+ */
 @Composable
 private fun SubtitlePreview(style: SubtitleStyle) {
     Box(
@@ -298,6 +317,11 @@ private fun SubtitlePreview(style: SubtitleStyle) {
     }
 }
 
+/**
+ * Labelled single-select group of [ChoiceChip]s, wrapping in a FlowRow or stacked
+ * when [vertical] is set. [firstFocus], when given, is attached to the first chip
+ * so the screen can direct initial D-pad focus there.
+ */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 private fun ChoiceRow(
@@ -340,6 +364,10 @@ private fun ChoiceRow(
     }
 }
 
+/**
+ * Focusable chip for one option. Selection shows an accent-gradient border and a
+ * leading dot; D-pad focus scales the chip slightly via NovaClickable.
+ */
 @Composable
 private fun ChoiceChip(
     text: String,
@@ -390,6 +418,7 @@ private fun ChoiceChip(
     }
 }
 
+/** Fixed-width label followed by its value, used for the device identifier list. */
 @Composable
 private fun InfoRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth()) {

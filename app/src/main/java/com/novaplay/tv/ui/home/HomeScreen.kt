@@ -66,6 +66,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** One hub tile; cards carrying a [managedFeature] are hidden when the policy denies it. */
 private data class HomeCard(
     val label: String,
     val icon: ImageVector,
@@ -73,6 +74,12 @@ private data class HomeCard(
     val managedFeature: ManagedFeature? = null,
 )
 
+/**
+ * Hub screen: wordmark/playlist/clock header, an adaptive grid of section
+ * cards filtered by the managed-access policy, and a sync status footer. On TV
+ * the first visible card takes initial focus, and each card gets an inset so
+ * the focus scale-up never clips at the grid edges.
+ */
 @Composable
 fun HomeScreen(
     onOpenLive: () -> Unit,
@@ -237,9 +244,15 @@ fun HomeScreen(
     }
 }
 
+// The notice only appears for managed playlists that block or hide something.
 private fun ManagedAccessPolicy.shouldShowHomeNotice(): Boolean =
     isManaged && (isBlocked || !allowLive || !allowMovies || !allowSeries)
 
+/**
+ * Banner summarising the managed-access policy: status label, the provider's
+ * message (or a generated services summary) and the support code. Border and
+ * icon switch to the error color when the device is fully blocked.
+ */
 @Composable
 private fun ManagedAccessNotice(policy: ManagedAccessPolicy) {
     Row(
@@ -288,6 +301,7 @@ private fun ManagedAccessNotice(policy: ManagedAccessPolicy) {
     }
 }
 
+// Fallback notice body listing whichever services the policy still allows.
 private fun managedServicesSummary(policy: ManagedAccessPolicy): String {
     val available = buildList {
         if (policy.allowLive) add("Live")
@@ -301,6 +315,7 @@ private fun managedServicesSummary(policy: ManagedAccessPolicy): String {
     }
 }
 
+/** Uppercase app wordmark drawn with the accent gradient brush. */
 @Composable
 private fun Wordmark() {
     Text(
@@ -314,6 +329,7 @@ private fun Wordmark() {
     )
 }
 
+/** Focusable hub card: circled icon over a glass highlight; scales up 7% on focus. */
 @Composable
 private fun HomeCardItem(
     card: HomeCard,
@@ -361,6 +377,7 @@ private fun HomeCardItem(
     }
 }
 
+/** HH:mm clock that refreshes every 10 s while the screen is composed. */
 @Composable
 private fun Clock() {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -378,5 +395,6 @@ private fun Clock() {
     )
 }
 
+// e.g. "Jul 12, 2026" — used for the playlist expiry in the header.
 private fun formatDate(epochMs: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(epochMs))

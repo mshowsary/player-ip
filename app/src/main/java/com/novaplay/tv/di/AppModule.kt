@@ -30,15 +30,24 @@ import javax.inject.Singleton
 @Retention(AnnotationRetention.BINARY)
 annotation class ApplicationScope
 
+/** Process-wide infrastructure: coroutine scope, JSON codec, HTTP stack, and Room. */
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
+    /**
+     * Provides the process-lifetime scope. SupervisorJob keeps one failed child (e.g. a
+     * sync) from cancelling unrelated background work; Default suits CPU-bound parsing.
+     */
     @Provides
     @Singleton
     @ApplicationScope
     fun applicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
+    /**
+     * Provides the shared Json codec, configured to survive dirty Xtream panel output:
+     * unknown keys, quoted numbers, and wrong-typed values must not fail a whole response.
+     */
     @Provides
     @Singleton
     fun json(): Json = Json {
@@ -47,6 +56,10 @@ object AppModule {
         coerceInputValues = true
     }
 
+    /**
+     * Provides the single OkHttp client shared by both Retrofit APIs (one connection
+     * pool). The 45s read timeout accommodates slow panels serving large catalogues.
+     */
     @Provides
     @Singleton
     fun okHttpClient(): OkHttpClient = OkHttpClient.Builder()
@@ -54,6 +67,10 @@ object AppModule {
         .readTimeout(45, TimeUnit.SECONDS)
         .build()
 
+    /**
+     * Provides the first-party portal API at the build-time base URL; the trailing-slash
+     * normalization keeps Retrofit's relative-path resolution correct for any config value.
+     */
     @Provides
     @Singleton
     fun portalApi(client: OkHttpClient, json: Json): PortalApi =
@@ -75,6 +92,11 @@ object AppModule {
             .build()
             .create(XtreamRawApi::class.java)
 
+    /**
+     * Provides the Room database. WAL lets catalogue writes proceed without blocking
+     * readers during sync; migrations are explicit — no destructive fallback, so a
+     * missing migration fails fast instead of silently wiping user data.
+     */
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): NovaDatabase =

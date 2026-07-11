@@ -43,6 +43,12 @@ import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.theme.isCompactWidth
 
+/**
+ * "Sync & health" panel: background sync mode picker, last refresh report, manual
+ * re-sync and image-cache clearing, plus privacy-safe device health diagnostics.
+ * [firstFocusRequester] targets the first sync-mode choice for initial D-pad focus.
+ * Copied support info never contains playlist URLs, credentials, tokens or device identifiers.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun PerformanceSettingsPanel(
@@ -216,6 +222,7 @@ fun PerformanceSettingsPanel(
     }
 }
 
+/** Label/value diagnostics row; blank values render as an em dash and long values are capped at two lines. */
 @Composable
 private fun DiagnosticRow(label: String, value: String) {
     Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
@@ -236,6 +243,11 @@ private fun DiagnosticRow(label: String, value: String) {
     }
 }
 
+/**
+ * Radio-style choice pill with a stable outline that thickens on focus instead of
+ * scaling, so D-pad focus never shifts the layout. Clicking also requests focus to
+ * keep touch selection and D-pad position in sync.
+ */
 @Composable
 private fun PerformanceChoice(
     text: String,

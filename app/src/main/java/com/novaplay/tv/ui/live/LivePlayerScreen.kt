@@ -61,6 +61,12 @@ import com.novaplay.tv.ui.player.PlayerSurface
 import com.novaplay.tv.ui.theme.NovaAccentGradient
 import com.novaplay.tv.ui.theme.isTvDevice
 
+/**
+ * Full-screen live playback surface. D-pad UP/DOWN zap to the next/previous
+ * channel in the current category and OK toggles the channel info overlay;
+ * touch devices get tap-to-toggle and vertical-swipe zapping instead. The
+ * stream is stopped when the app leaves the foreground and restored on return.
+ */
 @Composable
 fun LivePlayerScreen(
     viewModel: LivePlayerViewModel = hiltViewModel(),
@@ -195,6 +201,11 @@ fun LivePlayerScreen(
     }
 }
 
+/**
+ * Bottom overlay showing channel number, name and category over a scrim
+ * gradient. On touch form factors it also hosts up/down zap buttons; TV
+ * remotes zap via D-pad, so the buttons are omitted there.
+ */
 @Composable
 private fun ChannelInfoBar(
     number: Int?,
@@ -261,6 +272,7 @@ private fun ChannelInfoBar(
     }
 }
 
+/** Circular translucent icon button used for touch zapping in the info overlay. */
 @Composable
 private fun ZapButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,

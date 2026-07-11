@@ -12,6 +12,7 @@ import com.novaplay.tv.data.security.PlaylistSecrets
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Outcome of asking the portal whether this device has playlists assigned. */
 sealed interface ActivationCheck {
     data class Activated(val playlistCount: Int) : ActivationCheck
     data object NotRegistered : ActivationCheck
@@ -19,6 +20,11 @@ sealed interface ActivationCheck {
     data class Failure(val message: String) : ActivationCheck
 }
 
+/**
+ * Resolves whether this device is activated against the portal and mirrors the
+ * assigned playlists into Room. Prefers the paired bearer session and only
+ * falls back to the legacy MAC + key contract while migration is in flight.
+ */
 @Singleton
 class ActivationRepository @Inject constructor(
     private val portalApi: PortalApi,
@@ -28,8 +34,15 @@ class ActivationRepository @Inject constructor(
     private val playlistSecrets: PlaylistSecrets,
     private val managedAccessRepository: ManagedAccessRepository,
 ) {
+    /** True once any playlist (portal-managed or personal) exists locally. */
     suspend fun hasPlaylists(): Boolean = db.playlistDao().count() > 0
 
+    /**
+     * Queries the portal for this device's assignment and attaches the returned
+     * playlists plus access policy. Network errors are reported as
+     * [ActivationCheck.Failure] rather than thrown; 404/403 map to
+     * NotRegistered/KeyMismatch so the UI can guide the user.
+     */
     suspend fun checkAndAttach(): ActivationCheck {
         if (BuildConfig.MOCK_ACTIVATION) {
             managedAccessRepository.applyPortalPolicy(MockPortal.policy)

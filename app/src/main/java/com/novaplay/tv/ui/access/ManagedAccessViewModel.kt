@@ -7,6 +7,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.StateFlow
 import javax.inject.Inject
 
+/**
+ * Exposes the current managed-access [policy] stream so blocked screens can
+ * react live when the provider portal changes what this device may use.
+ */
 @HiltViewModel
 class ManagedAccessViewModel @Inject constructor(
     repository: ManagedAccessRepository,

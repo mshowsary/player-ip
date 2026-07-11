@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Where the launch gate should route: still deciding, activation, or home. */
 sealed interface GateState {
     data object Loading : GateState
     data object NeedsActivation : GateState

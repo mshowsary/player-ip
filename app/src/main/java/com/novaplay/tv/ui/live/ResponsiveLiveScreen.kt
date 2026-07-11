@@ -223,6 +223,10 @@ fun ResponsiveLiveScreen(
     }
 }
 
+/**
+ * Channel entry sized by the current layout spec (row height and logo size).
+ * OK/click plays the channel; long-press OK toggles the bookmark on remotes.
+ */
 @Composable
 private fun ResponsiveChannelRow(
     channel: LiveChannel,
@@ -285,6 +289,11 @@ private fun ResponsiveChannelRow(
     }
 }
 
+/**
+ * Bookmark toggle at the row's trailing edge. On TV it handles raw taps only
+ * and stays out of the D-pad focus order (remotes use long-press OK instead);
+ * on touch it is a regular accessible clickable with a role and label.
+ */
 @Composable
 private fun LiveBookmarkButton(
     bookmarked: Boolean,
@@ -320,6 +329,7 @@ private fun LiveBookmarkButton(
     }
 }
 
+// Shimmer placeholder rows matching the layout's channel row height.
 @Composable
 private fun ResponsiveChannelSkeleton(rowHeightDp: Int) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -333,6 +343,7 @@ private fun ResponsiveChannelSkeleton(rowHeightDp: Int) {
     }
 }
 
+// Maps number-row and numpad keys to their digit for channel-number entry.
 private fun Key.liveDigitOrNull(): Char? = when (this) {
     Key.Zero, Key.NumPad0 -> '0'
     Key.One, Key.NumPad1 -> '1'

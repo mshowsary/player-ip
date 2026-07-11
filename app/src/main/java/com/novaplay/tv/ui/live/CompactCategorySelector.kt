@@ -194,6 +194,10 @@ fun CompactCategorySelector(
     }
 }
 
+/**
+ * Rounded pill chip for the compact strip. Selection is marked with the
+ * accent-gradient ring and a primary-tinted label; D-pad focus scales it up.
+ */
 @Composable
 private fun CompactCategoryChip(
     label: String,
@@ -244,6 +248,10 @@ private fun CompactCategoryChip(
     }
 }
 
+/**
+ * Inline filter box inside the category picker dialog; narrows the list as
+ * the user types (plain substring match, not FTS).
+ */
 @Composable
 private fun CategoryFilterField(
     query: String,
@@ -289,6 +297,10 @@ private fun CategoryFilterField(
     }
 }
 
+/**
+ * Single focusable row in the category picker; the selected entry carries a
+ * primary indicator bar. OK/click selects it and closes the dialog.
+ */
 @Composable
 private fun CategoryPickerRow(
     name: String,
@@ -337,9 +349,11 @@ private fun CategoryPickerRow(
     }
 }
 
+/** True when the catalogue is large enough to warrant the searchable picker dialog. */
 internal fun shouldUseCategoryPicker(categoryCount: Int): Boolean =
     categoryCount > CATEGORY_DIALOG_THRESHOLD
 
+/** Case-insensitive substring filter over provider categories; a blank query keeps them all. */
 internal fun filterProviderCategories(
     categories: List<Pair<Long, String>>,
     rawQuery: String,

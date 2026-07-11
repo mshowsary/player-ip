@@ -37,6 +37,11 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
+/**
+ * One selectable audio or subtitle track, addressed by its Media3 group/track
+ * indices. Raw language/label are kept alongside the display label so the choice
+ * can be persisted and re-matched on the next playback.
+ */
 data class TrackOption(
     val groupIndex: Int,
     val trackIndex: Int,
@@ -46,6 +51,7 @@ data class TrackOption(
     val selected: Boolean,
 )
 
+/** Immutable snapshot of everything the VOD player screen renders. */
 data class VodPlayerUiState(
     val title: String = "",
     val episodeTag: String? = null,
@@ -62,12 +68,14 @@ data class VodPlayerUiState(
     val error: String? = null,
 )
 
+// Stable key for a watch-progress row; uses provider-side ids, not local Room ids.
 private data class ProgressIdentity(
     val playlistId: Long,
     val mediaType: String,
     val remoteId: Long,
 )
 
+// Flattened track descriptor used while matching stored track preferences.
 private data class TrackCandidate(
     val groupIndex: Int,
     val trackIndex: Int,
@@ -75,6 +83,13 @@ private data class TrackCandidate(
     val label: String?,
 )
 
+/**
+ * Owns the ExoPlayer instance for movie/episode playback. Handles resume from saved
+ * progress, periodic progress persistence, bounded automatic recovery from transient
+ * network failures, track selection with persisted language preferences, and the
+ * auto-hiding controls state. Pure decision rules live in [VodResumePolicy] and
+ * [VodRecoveryPolicy] so they stay testable with plain JUnit.
+ */
 @HiltViewModel
 class VodPlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
@@ -111,6 +126,7 @@ class VodPlayerViewModel @Inject constructor(
 
     init {
         player.addListener(object : Player.Listener {
+            // Mirrors buffering/ready/ended into UI state; ENDED also force-saves completion.
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
@@ -145,6 +161,7 @@ class VodPlayerViewModel @Inject constructor(
                 }
             }
 
+            // Playing clears the recovery banner and arms the attempt-counter reset timer.
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 _uiState.update {
                     it.copy(
@@ -155,10 +172,12 @@ class VodPlayerViewModel @Inject constructor(
                 if (isPlaying) scheduleStablePlaybackReset() else stablePlaybackJob?.cancel()
             }
 
+            // Every ExoPlayer failure funnels through the bounded recovery path.
             override fun onPlayerError(error: PlaybackException) {
                 handlePlaybackFailure(error)
             }
 
+            // Re-applies saved language choices, then refreshes the picker lists.
             override fun onTracksChanged(tracks: Tracks) {
                 applyStoredTrackPreferences(tracks)
                 rebuildTrackOptions(tracks)
@@ -194,6 +213,11 @@ class VodPlayerViewModel @Inject constructor(
         scheduleControlsHide()
     }
 
+    /**
+     * Resolves the movie/episode from navigation args, records the recent view, and
+     * starts playback — slightly before the saved position when resume was requested.
+     * A missing item or URL surfaces a terminal "Media not found" error instead.
+     */
     private suspend fun load() {
         val url = when (mediaType) {
             Routes.MEDIA_TYPE_MOVIE -> {
@@ -253,6 +277,11 @@ class VodPlayerViewModel @Inject constructor(
         prepareAt(positionMs = startPosition, recoveryMessage = null, resetRecovery = true)
     }
 
+    /**
+     * (Re)prepares the current URL at the given position, cancelling in-flight
+     * recovery/watchdog jobs. Clears the applied-preferences latch so stored track
+     * choices are re-applied to the freshly loaded track list.
+     */
     private fun prepareAt(
         positionMs: Long,
         recoveryMessage: String?,
@@ -279,6 +308,7 @@ class VodPlayerViewModel @Inject constructor(
 
     // ---- recovery ----
 
+    // Only network/HTTP failures are worth silent retries; codec errors fail fast.
     private fun handlePlaybackFailure(error: PlaybackException) {
         val recoverable = when (error.errorCode) {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
@@ -290,6 +320,10 @@ class VodPlayerViewModel @Inject constructor(
         recoverOrFail(recoverable, playbackErrorMessage(error))
     }
 
+    /**
+     * Arms a timeout while buffering so a stall that never raises an error still
+     * enters the recovery path instead of spinning forever.
+     */
     private fun startBufferingWatchdog() {
         bufferingWatchdog?.cancel()
         bufferingWatchdog = viewModelScope.launch {
@@ -307,6 +341,11 @@ class VodPlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Either schedules the next bounded recovery attempt — pause, backoff, re-prepare
+     * at the last known position — or gives up and shows the terminal error screen.
+     * No-ops while an attempt is already in flight to avoid stacking restarts.
+     */
     private fun recoverOrFail(recoverable: Boolean, terminalMessage: String) {
         bufferingWatchdog?.cancel()
         stablePlaybackJob?.cancel()
@@ -338,6 +377,10 @@ class VodPlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Refills the recovery budget after a stretch of uninterrupted playback so a
+     * later, unrelated failure gets its own full set of attempts.
+     */
     private fun scheduleStablePlaybackReset() {
         stablePlaybackJob?.cancel()
         stablePlaybackJob = viewModelScope.launch {
@@ -349,6 +392,7 @@ class VodPlayerViewModel @Inject constructor(
         }
     }
 
+    // User-facing terminal message keyed by ExoPlayer error code.
     private fun playbackErrorMessage(error: PlaybackException): String = when (error.errorCode) {
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
         PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
@@ -360,24 +404,30 @@ class VodPlayerViewModel @Inject constructor(
 
     // ---- controls ----
 
+    /** Reveals the controls overlay and restarts the auto-hide countdown. */
     fun showControls() {
         _uiState.update { it.copy(controlsVisible = true) }
         scheduleControlsHide()
     }
 
+    /** Hides the overlay immediately and cancels any pending auto-hide. */
     fun hideControls() {
         hideControlsJob?.cancel()
         _uiState.update { it.copy(controlsVisible = false) }
     }
 
+    /** Restarts the auto-hide countdown without changing visibility; called on any key while visible. */
     fun pokeControls() {
         if (_uiState.value.controlsVisible) scheduleControlsHide()
     }
 
+    /** Flips overlay visibility; used by the touch tap handler. */
     fun toggleControls() {
         if (_uiState.value.controlsVisible) hideControls() else showControls()
     }
 
+    // Auto-hide after a short delay — but never over the ended or error states,
+    // where the controls must stay reachable.
     private fun scheduleControlsHide() {
         hideControlsJob?.cancel()
         hideControlsJob = viewModelScope.launch {
@@ -388,6 +438,10 @@ class VodPlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Play/pause toggle that doubles as "Play again" once the video has ended.
+     * Pausing persists progress immediately so nothing is lost if the app dies.
+     */
     fun togglePlayPause() {
         if (_uiState.value.completed || player.playbackState == Player.STATE_ENDED) {
             player.seekTo(0L)
@@ -416,6 +470,7 @@ class VodPlayerViewModel @Inject constructor(
         showControls()
     }
 
+    /** Jumps straight to a fraction of the duration (seek-bar taps and drag release). */
     fun seekToFraction(fraction: Float) {
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: return
         val target = (duration * fraction.coerceIn(0f, 1f)).toLong()
@@ -426,6 +481,11 @@ class VodPlayerViewModel @Inject constructor(
 
     // ---- track selection ----
 
+    /**
+     * One-shot per prepared item: restores the persisted audio choice and the
+     * subtitle on/off state plus selection onto the freshly loaded track list.
+     * Latched so later onTracksChanged calls don't override the user mid-playback.
+     */
     private fun applyStoredTrackPreferences(tracks: Tracks) {
         if (trackPreferencesApplied) return
         trackPreferencesApplied = true
@@ -467,6 +527,11 @@ class VodPlayerViewModel @Inject constructor(
         if (changed) player.trackSelectionParameters = builder.build()
     }
 
+    /**
+     * Finds the supported track matching a stored preference — a language match
+     * beats a label match. Null when nothing was stored or nothing matches, in
+     * which case ExoPlayer's default selection stands.
+     */
     private fun findPreferredTrack(
         tracks: Tracks,
         type: Int,
@@ -500,6 +565,8 @@ class VodPlayerViewModel @Inject constructor(
         }
     }
 
+    // Rebuilds the audio/subtitle picker lists (and the text-enabled flag) from the
+    // player's current tracks, skipping unsupported ones.
     private fun rebuildTrackOptions(tracks: Tracks) {
         val audio = mutableListOf<TrackOption>()
         val text = mutableListOf<TrackOption>()
@@ -537,6 +604,7 @@ class VodPlayerViewModel @Inject constructor(
         }
     }
 
+    /** Applies an audio override and persists language/label so future playback matches it. */
     fun selectAudioTrack(option: TrackOption) {
         val group = player.currentTracks.groups.getOrNull(option.groupIndex) ?: return
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
@@ -552,6 +620,10 @@ class VodPlayerViewModel @Inject constructor(
         showControls()
     }
 
+    /**
+     * Selects a subtitle track, or disables text entirely when passed null ("Off").
+     * Both the on/off state and the chosen language/label are persisted.
+     */
     fun selectTextTrack(option: TrackOption?) {
         player.trackSelectionParameters = if (option == null) {
             player.trackSelectionParameters.buildUpon()
@@ -580,6 +652,7 @@ class VodPlayerViewModel @Inject constructor(
         showControls()
     }
 
+    // Readable audio label like "English · 5.1"; degrades to the raw label or a generic fallback.
     private fun audioLabel(language: String?, label: String?, channelCount: Int): String {
         val lang = language.displayLanguageOrNull()
         val channels = when (channelCount) {
@@ -595,9 +668,12 @@ class VodPlayerViewModel @Inject constructor(
             .ifBlank { "Audio track" }
     }
 
+    // Subtitle label: display language first, then the stream label, then a generic fallback.
     private fun textLabel(language: String?, label: String?): String =
         language.displayLanguageOrNull() ?: label ?: "Subtitle track"
 
+    // Language tag to display name ("en" -> "English"); null for blank/undetermined tags,
+    // falling back to the raw code when the platform has no localized name for it.
     private fun String?.displayLanguageOrNull(): String? =
         this?.takeIf { it.isNotBlank() && it != C.LANGUAGE_UNDETERMINED }
             ?.let { code ->
@@ -607,17 +683,20 @@ class VodPlayerViewModel @Inject constructor(
                     ?: code
             }
 
+    // Case- and whitespace-insensitive comparison key for stored track preferences.
     private fun String?.normalizePreference(): String? =
         this?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() }
 
     // ---- lifecycle and progress ----
 
+    /** Pauses and saves progress when the app leaves the foreground, remembering the play state. */
     fun onLifecycleStop() {
         wasPlayingBeforeStop = player.isPlaying
         player.pause()
         viewModelScope.launch { persistProgress() }
     }
 
+    /** Resumes on return to foreground only if playback was active when stopped. */
     fun onLifecycleStart() {
         if (wasPlayingBeforeStop && _uiState.value.error == null && !_uiState.value.completed) {
             player.play()
@@ -625,12 +704,18 @@ class VodPlayerViewModel @Inject constructor(
         wasPlayingBeforeStop = false
     }
 
+    /** User-initiated retry from the error screen: resets the recovery budget and re-prepares in place. */
     fun retry() {
         recoveryAttempts = 0
         val resumePosition = _uiState.value.positionMs.coerceAtLeast(0L)
         prepareAt(resumePosition, recoveryMessage = "Restoring playback…", resetRecovery = true)
     }
 
+    /**
+     * Saves normalized watch progress, skipping writes until the position is worth
+     * keeping per [VodResumePolicy]. With forceComplete (STATE_ENDED) the position
+     * is pinned to the full duration so the title shows as watched.
+     */
     private suspend fun persistProgress(forceComplete: Boolean = false) {
         val identity = progressIdentity ?: return
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
@@ -655,6 +740,10 @@ class VodPlayerViewModel @Inject constructor(
         )
     }
 
+    /**
+     * Final save on exit: reads position/duration before releasing the player, then
+     * writes through the application scope so the save outlives this ViewModel.
+     */
     override fun onCleared() {
         hideControlsJob?.cancel()
         recoveryJob?.cancel()

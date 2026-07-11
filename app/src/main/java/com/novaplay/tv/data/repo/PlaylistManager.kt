@@ -29,6 +29,7 @@ data class PlaylistDraft(
     val url: String = "",
 )
 
+/** Result of a connection test: a user-facing message plus optional account limits. */
 data class PlaylistProbe(
     val message: String,
     val expiryEpochSec: Long? = null,
@@ -48,6 +49,11 @@ class PlaylistManager @Inject constructor(
     private val playlistSecrets: PlaylistSecrets,
 ) {
 
+    /**
+     * Validates the draft and probes the provider over the network without
+     * persisting anything: Xtream drafts must report an Active account, M3U
+     * drafts must look like a real playlist. Failures carry user-facing messages.
+     */
     suspend fun test(draft: PlaylistDraft): Result<PlaylistProbe> = runCatching {
         val normalized = normalize(draft)
         validate(normalized)
@@ -75,6 +81,12 @@ class PlaylistManager @Inject constructor(
         }
     }
 
+    /**
+     * Inserts or updates a personal playlist, sealing credentials before Room
+     * sees them. The first playlist ever saved becomes active automatically;
+     * edits refuse portal-managed rows and type changes, and reset lastSync so
+     * the next sync does a full refresh.
+     */
     suspend fun save(draft: PlaylistDraft): Result<Playlist> = runCatching {
         val normalized = normalize(draft)
         validate(normalized)
@@ -140,6 +152,7 @@ class PlaylistManager @Inject constructor(
         }
     }
 
+    /** Opens the sealed credentials into an editable draft for the playlist form. */
     fun draftFrom(playlist: Playlist): PlaylistDraft {
         val opened = playlistSecrets.open(playlist)
         return PlaylistDraft(
@@ -153,8 +166,13 @@ class PlaylistManager @Inject constructor(
         )
     }
 
+    /** User-entered playlists carry a negative portalId; portal assignments are non-negative. */
     fun isPersonal(playlist: Playlist): Boolean = playlist.portalId < 0L
 
+    /**
+     * Best-effort cleanup of the private copy created by [importM3u]. Only
+     * touches personal file-backed M3U playlists; deletion errors are swallowed.
+     */
     fun deleteImportedFile(playlist: Playlist) {
         val opened = playlistSecrets.open(playlist)
         val source = opened.url ?: return
@@ -162,6 +180,8 @@ class PlaylistManager @Inject constructor(
         runCatching { File(URI(source)).delete() }
     }
 
+    // Synthesizes a unique negative portalId (timestamp-based, probing down on
+    // collision) so personal rows never clash with portal-assigned ids.
     private suspend fun nextLocalPortalId(): Long {
         val dao = db.playlistDao()
         var candidate = -System.currentTimeMillis().coerceAtLeast(1L)
@@ -169,6 +189,7 @@ class PlaylistManager @Inject constructor(
         return candidate
     }
 
+    // Trims fields, canonicalizes the type and repairs server/URL forms before validation.
     private fun normalize(draft: PlaylistDraft): PlaylistDraft {
         val type = when (draft.type.lowercase()) {
             Playlist.TYPE_M3U -> Playlist.TYPE_M3U
@@ -184,6 +205,8 @@ class PlaylistManager @Inject constructor(
         )
     }
 
+    // Throws IllegalArgumentException with user-facing messages when required
+    // fields for the draft's type are missing or malformed.
     private fun validate(draft: PlaylistDraft) {
         require(draft.name.isNotBlank()) { "Enter a playlist name" }
         when (draft.type) {
@@ -207,6 +230,7 @@ class PlaylistManager @Inject constructor(
         }
     }
 
+    // Maps the draft to an entity, keeping only the fields relevant to its type.
     private fun PlaylistDraft.toPlaylist(portalId: Long, isActive: Boolean = false): Playlist = Playlist(
         portalId = portalId,
         name = name,
@@ -218,6 +242,8 @@ class PlaylistManager @Inject constructor(
         isActive = isActive,
     )
 
+    // Adds a scheme if missing and strips any pasted /player_api.php suffix and
+    // trailing slashes, leaving the bare Xtream base URL.
     private fun normalizeServer(raw: String): String {
         var value = raw.trim()
         if (value.isBlank()) return value
@@ -226,12 +252,15 @@ class PlaylistManager @Inject constructor(
         return value.trimEnd('/')
     }
 
+    // Adds http:// to bare hosts; file: URIs from imports pass through untouched.
     private fun normalizeUrl(raw: String): String {
         val value = raw.trim()
         if (value.isBlank() || value.startsWith("file:")) return value
         return if (value.startsWith("http://") || value.startsWith("https://")) value else "http://$value"
     }
 
+    // Streams the source on Dispatchers.IO and checks at most 250 lines for
+    // #EXTM3U/#EXTINF markers, so a huge or bogus file cannot stall the probe.
     private suspend fun inspectM3u(url: String) = withContext(Dispatchers.IO) {
         val reader = when {
             url.startsWith("file:") -> File(URI(url)).bufferedReader()
@@ -265,6 +294,7 @@ class PlaylistManager @Inject constructor(
         }
     }
 
+    // Resolves the picker file's display name for use as the default playlist name.
     private fun queryDisplayName(uri: Uri): String? = context.contentResolver.query(
         uri,
         arrayOf(OpenableColumns.DISPLAY_NAME),

@@ -54,6 +54,8 @@ fun PlayerSurface(
     )
 }
 
+// Maps the user's subtitle settings onto Media3's caption style. Window colour is
+// kept transparent and the typeface default so only colour/background/edge vary.
 @androidx.annotation.OptIn(UnstableApi::class)
 private fun SubtitleStyle.toCaptionStyle(): CaptionStyleCompat =
     CaptionStyleCompat(

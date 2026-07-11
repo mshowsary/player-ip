@@ -56,6 +56,13 @@ import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 import kotlinx.coroutines.delay
 
+/**
+ * Device pairing screen: shows the one-time user code and portal address so
+ * the viewer can approve this device from a phone or computer, plus an escape
+ * hatch for personal playlists. Calls [onActivated] once the ViewModel reports
+ * approval. On TV, focus snaps to the primary action button whenever the phase
+ * moves past PREPARING.
+ */
 @Composable
 fun ActivationScreen(
     onActivated: () -> Unit,
@@ -84,6 +91,7 @@ fun ActivationScreen(
         }
     }
 
+    // Copies a value to the clipboard and flashes a "<label> copied" confirmation.
     fun copyValue(label: String, value: String) {
         if (value.isBlank()) return
         clipboard.setText(AnnotatedString(value))
@@ -198,6 +206,11 @@ fun ActivationScreen(
     }
 }
 
+/**
+ * Card with the pairing status, one-time code, portal address, and the
+ * phase-appropriate actions (check now / new code). [primaryActionFocus] lets
+ * the parent aim TV focus at the main button.
+ */
 @Composable
 private fun PairingPanel(
     state: ActivationUiState,
@@ -326,6 +339,7 @@ private fun PairingPanel(
     }
 }
 
+/** Large monospace one-time code; selecting the card copies the code. */
 @Composable
 private fun PairingCodeCard(
     code: String,
@@ -368,6 +382,7 @@ private fun PairingCodeCard(
     }
 }
 
+/** Portal URL row with a copy icon; selecting it copies the address. */
 @Composable
 private fun PortalAddressCard(
     address: String,
@@ -412,6 +427,7 @@ private fun PortalAddressCard(
     }
 }
 
+/** Pulsing placeholder shown while the pairing session is being created. */
 @Composable
 private fun PreparingCodeCard() {
     Column(
@@ -433,6 +449,11 @@ private fun PreparingCodeCard() {
     }
 }
 
+/**
+ * One-line status indicator: pulsing dot while a phase is still in flight,
+ * solid success/error dot once terminal, plus the expiry countdown while
+ * waiting for approval.
+ */
 @Composable
 private fun PairingStatusRow(state: ActivationUiState) {
     val active = state.phase == ActivationPhase.PREPARING ||
@@ -476,6 +497,7 @@ private fun PairingStatusRow(state: ActivationUiState) {
     }
 }
 
+/** Static three-step "How to connect" instructions panel. */
 @Composable
 private fun StepsPanel() {
     Column(
@@ -509,6 +531,7 @@ private fun StepsPanel() {
     }
 }
 
+/** Single numbered instruction: circled step number beside a title and body. */
 @Composable
 private fun InstructionRow(
     number: String,
@@ -544,6 +567,10 @@ private fun InstructionRow(
     }
 }
 
+/**
+ * Escape hatch for users with their own Xtream credentials or M3U playlist,
+ * bypassing the provider portal entirely.
+ */
 @Composable
 private fun PersonalPlaylistPanel(onAddPersonalPlaylist: () -> Unit) {
     Column(
@@ -575,6 +602,7 @@ private fun PersonalPlaylistPanel(onAddPersonalPlaylist: () -> Unit) {
     }
 }
 
+// Headline of the pairing panel, per phase.
 private fun statusTitle(state: ActivationUiState): String = when (state.phase) {
     ActivationPhase.PREPARING -> "Preparing your code"
     ActivationPhase.WAITING_FOR_APPROVAL -> "Pairing code ready"
@@ -585,6 +613,7 @@ private fun statusTitle(state: ActivationUiState): String = when (state.phase) {
     ActivationPhase.ERROR -> "Pairing unavailable"
 }
 
+// Longer explanation shown under the headline, per phase.
 private fun statusBody(state: ActivationUiState): String = when (state.phase) {
     ActivationPhase.PREPARING -> "NovaPlay is creating a short-lived private session with the portal."
     ActivationPhase.WAITING_FOR_APPROVAL ->
@@ -597,6 +626,7 @@ private fun statusBody(state: ActivationUiState): String = when (state.phase) {
     ActivationPhase.ERROR -> "A secure pairing session could not be created right now."
 }
 
+// Short status text next to the indicator dot in PairingStatusRow.
 private fun statusLine(state: ActivationUiState): String = when (state.phase) {
     ActivationPhase.PREPARING -> "Creating secure session"
     ActivationPhase.WAITING_FOR_APPROVAL -> if (state.checking) "Checking for approval" else "Waiting for approval"
@@ -607,6 +637,7 @@ private fun statusLine(state: ActivationUiState): String = when (state.phase) {
     ActivationPhase.ERROR -> "Not connected"
 }
 
+/** Formats the remaining seconds as m:ss, clamping negative values to 0:00. */
 internal fun formatCountdown(totalSeconds: Long): String {
     val safe = totalSeconds.coerceAtLeast(0L)
     val minutes = safe / 60L
@@ -614,6 +645,7 @@ internal fun formatCountdown(totalSeconds: Long): String {
     return "%d:%02d".format(minutes, seconds)
 }
 
+/** Strips the scheme and trailing slash so the on-screen address stays short. */
 internal fun displayPortalAddress(address: String): String = address
     .removePrefix("https://")
     .removePrefix("http://")

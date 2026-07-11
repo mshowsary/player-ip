@@ -58,6 +58,11 @@ import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
+/**
+ * Adaptive settings screen that stacks the setting cards in a single column on
+ * compact widths and splits them into two columns otherwise. On TV, initial focus
+ * lands on the first interface-mode pill and each column restores focus on re-entry.
+ */
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalLayoutApi::class)
 @Composable
 fun AdaptiveSettingsScreen(
@@ -171,6 +176,10 @@ fun AdaptiveSettingsScreen(
     }
 }
 
+/**
+ * Card for overriding the auto/touch/TV interface mode, with a hint line describing
+ * the active mode. Its first pill carries the screen's initial focus requester.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InterfaceCard(
@@ -201,6 +210,7 @@ private fun InterfaceCard(
     }
 }
 
+/** Card for picking the preferred live stream format (auto tries HLS, then MPEG-TS). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaybackCard(
@@ -220,6 +230,10 @@ private fun PlaybackCard(
     }
 }
 
+/**
+ * Card with re-sync and clear-image-cache actions. The sync button reflects live
+ * progress and the failure message is surfaced inline when a sync fails.
+ */
 @Composable
 private fun MaintenanceCard(
     syncStatus: SyncStatus,
@@ -255,6 +269,10 @@ private fun MaintenanceCard(
     }
 }
 
+/**
+ * Card grouping the subtitle style choices (size, color, background, edge) below a
+ * live preview. Every selection is persisted immediately via the callbacks.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SubtitleCard(
@@ -296,6 +314,7 @@ private fun SubtitleCard(
     }
 }
 
+/** Card listing the device identifiers (MAC, device key, app version) used for portal activation and support. */
 @Composable
 private fun DeviceCard(info: DeviceInfo) {
     SettingsCard(
@@ -308,6 +327,7 @@ private fun DeviceCard(info: DeviceInfo) {
     }
 }
 
+/** Bordered surface container with a title and description above the slot content, shared by all cards on this screen. */
 @Composable
 private fun SettingsCard(
     title: String,
@@ -336,6 +356,11 @@ private fun SettingsCard(
     }
 }
 
+/**
+ * Labelled single-select group rendered as a wrapping row of pills. When [firstFocus]
+ * is provided it is attached to the first pill so the screen can direct initial
+ * D-pad focus there.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChoiceGroup(
@@ -371,6 +396,10 @@ private fun ChoiceGroup(
     }
 }
 
+/**
+ * Focusable pill for one option. Selection shows an accent-gradient border and a
+ * leading dot; D-pad focus scales the pill slightly via NovaClickable.
+ */
 @Composable
 private fun ChoicePill(
     text: String,
@@ -409,6 +438,11 @@ private fun ChoicePill(
     }
 }
 
+/**
+ * Renders a sample subtitle line over a dark gradient so style changes preview
+ * instantly. Text size is derived from a 720p reference height, and the OUTLINE
+ * edge is simulated by a stroked black copy drawn beneath the text.
+ */
 @Composable
 private fun SubtitlePreview(style: SubtitleStyle) {
     Box(
@@ -450,6 +484,7 @@ private fun SubtitlePreview(style: SubtitleStyle) {
     }
 }
 
+/** Two-column label/value row; blank values render as an em dash. */
 @Composable
 private fun DeviceInfoRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth()) {

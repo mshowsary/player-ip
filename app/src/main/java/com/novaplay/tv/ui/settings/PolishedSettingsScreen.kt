@@ -198,6 +198,10 @@ fun PolishedSettingsScreen(
     }
 }
 
+/**
+ * Panel for overriding the auto/touch/TV interface mode, with a hint line describing
+ * the active mode. Its first choice carries the screen's initial focus requester.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun InterfacePanel(
@@ -228,6 +232,11 @@ private fun InterfacePanel(
     }
 }
 
+/**
+ * Panel showing the provider-assigned access policy: state, per-feature availability,
+ * policy revision, support code and a refresh action. Debug builds additionally expose
+ * a preset picker for previewing policy states; release builds only receive the portal policy.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ManagedAccessPanel(
@@ -287,6 +296,7 @@ private fun ManagedAccessPanel(
     }
 }
 
+// Maps the current policy back to the closest debug preset ordinal, or -1 when none matches.
 private fun debugPresetIndex(policy: ManagedAccessPolicy): Int = when {
     policy.state == ManagedAccessState.UNMANAGED -> DebugManagedPolicyPreset.UNMANAGED.ordinal
     policy.state == ManagedAccessState.SUSPENDED -> DebugManagedPolicyPreset.SUSPENDED.ordinal
@@ -296,6 +306,7 @@ private fun debugPresetIndex(policy: ManagedAccessPolicy): Int = when {
     else -> -1
 }
 
+/** Row for one managed feature: a primary-colored dot and "Available" when allowed, error-colored when blocked. */
 @Composable
 private fun AccessServiceRow(label: String, allowed: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -321,6 +332,7 @@ private fun AccessServiceRow(label: String, allowed: Boolean) {
     }
 }
 
+/** Panel for picking the preferred live stream format (auto tries HLS, then MPEG-TS). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun PlaybackPanel(
@@ -340,6 +352,10 @@ private fun PlaybackPanel(
     }
 }
 
+/**
+ * Panel with re-sync and clear-image-cache actions. The sync button reflects live
+ * progress and the failure message is surfaced inline when a sync fails.
+ */
 @Composable
 private fun MaintenancePanel(
     status: SyncStatus,
@@ -375,6 +391,10 @@ private fun MaintenancePanel(
     }
 }
 
+/**
+ * Panel grouping the subtitle style choices (size, color, background, edge) below a
+ * live preview. Every selection is persisted immediately and applied to VOD playback.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SubtitlePanel(
@@ -416,6 +436,7 @@ private fun SubtitlePanel(
     }
 }
 
+/** Panel listing the device identifiers (MAC, device key, app version) used for portal activation and support. */
 @Composable
 private fun DevicePanel(info: DeviceInfo) {
     SettingsPanel(
@@ -428,6 +449,7 @@ private fun DevicePanel(info: DeviceInfo) {
     }
 }
 
+/** Bordered surface container with a title and description above the slot content, shared by all panels on this screen. */
 @Composable
 private fun SettingsPanel(
     title: String,
@@ -456,6 +478,11 @@ private fun SettingsPanel(
     }
 }
 
+/**
+ * Labelled single-select group rendered as a wrapping row of [StableChoice] pills.
+ * When [firstFocus] is provided it is attached to the first option so the screen
+ * can direct initial D-pad focus there.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ChoiceGroup(
@@ -487,6 +514,11 @@ private fun ChoiceGroup(
     }
 }
 
+/**
+ * Radio-style choice pill with a stable outline that thickens on focus instead of
+ * scaling or glowing (see the screen KDoc). Clicking also requests focus to keep
+ * touch selection and D-pad position in sync.
+ */
 @Composable
 private fun StableChoice(
     text: String,
@@ -551,6 +583,11 @@ private fun StableChoice(
     }
 }
 
+/**
+ * Renders a sample subtitle line over a dark gradient so style changes preview
+ * instantly. Text size is derived from a 720p reference height, and the OUTLINE
+ * edge is simulated by a stroked black copy drawn beneath the text.
+ */
 @Composable
 private fun SubtitlePreview(style: SubtitleStyle) {
     Box(
@@ -592,6 +629,7 @@ private fun SubtitlePreview(style: SubtitleStyle) {
     }
 }
 
+/** Two-column label/value row; blank values render as an em dash and long values are ellipsized. */
 @Composable
 private fun DeviceInfoRow(label: String, value: String) {
     Row(modifier = Modifier.fillMaxWidth()) {

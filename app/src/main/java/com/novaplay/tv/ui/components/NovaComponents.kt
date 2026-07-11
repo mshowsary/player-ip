@@ -162,6 +162,7 @@ fun NovaButton(
     }
 }
 
+// Centered single-line button label; ellipsizes instead of wrapping.
 @Composable
 private fun BoxScope.FocusAwareButtonLabel(text: String, prominent: Boolean) {
     // One-line labels keep action rows stable. Long actions should receive a
@@ -179,6 +180,10 @@ private fun BoxScope.FocusAwareButtonLabel(text: String, prominent: Boolean) {
     )
 }
 
+/**
+ * Small accent-colored dot that pulses its alpha indefinitely — a lightweight
+ * "activity in progress" indicator (caller supplies the size via [modifier]).
+ */
 @Composable
 fun PulsingDot(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "pulse")
@@ -226,6 +231,10 @@ fun ShimmerBox(modifier: Modifier = Modifier, shape: Shape = MaterialTheme.shape
     )
 }
 
+/**
+ * Full-size centered error message with a Retry button. On TV the button grabs
+ * D-pad focus on entry so a single remote press retries without navigating.
+ */
 @Composable
 fun ErrorState(
     message: String,
@@ -257,6 +266,7 @@ fun ErrorState(
     }
 }
 
+/** Full-size centered muted message for empty lists and grids; nothing focusable inside. */
 @Composable
 fun EmptyState(message: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

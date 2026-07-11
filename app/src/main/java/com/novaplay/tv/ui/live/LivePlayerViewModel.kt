@@ -33,6 +33,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 
+/** Immutable UI snapshot for the live player: current channel plus overlay, buffering and error flags. */
 data class LivePlayerUiState(
     val channel: LiveChannel? = null,
     val categoryName: String? = null,
@@ -43,6 +44,12 @@ data class LivePlayerUiState(
     val error: String? = null,
 )
 
+/**
+ * Owns the ExoPlayer instance for live playback plus the zap and recovery
+ * state machines. Zapping walks the indexed (playlistId, categoryId, num)
+ * ordering in the DB; failures get bounded-backoff retries per source before
+ * falling back to the alternate HLS/MPEG-TS URL (see [PlaybackRetryPolicy]).
+ */
 @androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
 class LivePlayerViewModel @Inject constructor(
@@ -90,10 +97,13 @@ class LivePlayerViewModel @Inject constructor(
 
     init {
         player.addListener(object : Player.Listener {
+            // Hard player errors feed the retry/fallback state machine.
             override fun onPlayerError(error: PlaybackException) {
                 recoverFromFailure(playbackErrorMessage(error))
             }
 
+            // Drives the buffering UI and recovery timers from player state
+            // transitions; an unexpected ENDED counts as a failure.
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
@@ -140,10 +150,14 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    /** Zaps up to the next channel by number within the current category (indexed DB lookup). */
     fun zapNext() = zap { channel -> contentRepository.nextChannel(channel, categoryId) }
 
+    /** Zaps down to the previous channel by number within the current category. */
     fun zapPrev() = zap { channel -> contentRepository.prevChannel(channel, categoryId) }
 
+    // Serialised zap: the mutex keeps rapid D-pad presses from interleaving
+    // channel switches; picking the same channel again is a no-op.
     private fun zap(pick: suspend (LiveChannel) -> LiveChannel?) {
         viewModelScope.launch {
             zapMutex.withLock {
@@ -155,6 +169,7 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    /** Shows or hides the channel info overlay (OK press / tap); showing re-arms the auto-hide timer. */
     fun toggleOverlay() {
         if (_uiState.value.overlayVisible) {
             overlayJob?.cancel()
@@ -164,6 +179,10 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    /**
+     * User-initiated retry from the error screen: resets the source index and
+     * failure count, then reconnects starting from the first candidate URL.
+     */
     fun retry() {
         if (_uiState.value.channel == null) return
         playbackGeneration++
@@ -192,6 +211,7 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    /** Restores the stream when the app returns to the foreground, unless the error screen is showing. */
     fun onLifecycleStart() {
         foregroundActive = true
         if (_uiState.value.channel != null && _uiState.value.error == null) {
@@ -208,6 +228,9 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    // Switches playback to [channel]: records it as recently viewed, resolves
+    // the candidate URLs for the preferred container, and starts on the first
+    // source with a fresh retry budget. Also pops the info overlay.
     private suspend fun playChannel(channel: LiveChannel) {
         playbackGeneration++
         cancelRecoveryJobs()
@@ -235,6 +258,8 @@ class LivePlayerViewModel @Inject constructor(
         prepareCurrent()
     }
 
+    // Points the player at the current candidate URL; no candidate left means
+    // a terminal "no stream" error. No-op while the app is backgrounded.
     private fun prepareCurrent() {
         if (!foregroundActive) return
         val url = candidateUrls.getOrNull(sourceIndex) ?: run {
@@ -260,6 +285,9 @@ class LivePlayerViewModel @Inject constructor(
         player.playWhenReady = true
     }
 
+    // Central failure path: asks PlaybackRetryPolicy whether to retry the same
+    // source with backoff, fall back to the alternate container URL, or give
+    // up and surface [finalMessage] as the terminal error.
     private fun recoverFromFailure(finalMessage: String) {
         if (!foregroundActive || _uiState.value.channel == null || retryJob?.isActive == true) return
 
@@ -302,6 +330,8 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    // Stops the player and re-prepares after [delayMs] — but only if no zap,
+    // retry or lifecycle change bumped the playback generation meanwhile.
     private fun scheduleReconnect(delayMs: Long, message: String) {
         val generation = playbackGeneration
         player.stop()
@@ -322,6 +352,8 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    // Treats buffering that outlasts STALL_TIMEOUT_MS as a failure so silent
+    // stalls enter the same recovery path as hard player errors.
     private fun armStallWatchdog(generation: Long) {
         stallWatchdogJob?.cancel()
         stallWatchdogJob = viewModelScope.launch {
@@ -337,6 +369,7 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    // Shows the channel info overlay and (re)starts the 4 s auto-hide timer.
     private fun showOverlay() {
         overlayJob?.cancel()
         _uiState.update { it.copy(overlayVisible = true) }
@@ -346,6 +379,7 @@ class LivePlayerViewModel @Inject constructor(
         }
     }
 
+    // Cancels any pending reconnect, stall-watchdog and stability timers.
     private fun cancelRecoveryJobs() {
         retryJob?.cancel()
         stallWatchdogJob?.cancel()
@@ -355,6 +389,7 @@ class LivePlayerViewModel @Inject constructor(
         stabilityJob = null
     }
 
+    // Maps ExoPlayer error codes to short user-facing messages.
     private fun playbackErrorMessage(error: PlaybackException): String =
         when (error.errorCode) {
             PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
@@ -364,6 +399,7 @@ class LivePlayerViewModel @Inject constructor(
             else -> "Playback failed"
         }
 
+    /** Cancels all timers and releases the player when the ViewModel is destroyed. */
     override fun onCleared() {
         overlayJob?.cancel()
         cancelRecoveryJobs()

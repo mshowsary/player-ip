@@ -38,6 +38,13 @@ import com.novaplay.tv.ui.series.SeriesScreen
 import com.novaplay.tv.ui.settings.EnhancedSettingsScreen
 import com.novaplay.tv.ui.theme.isTvDevice
 
+/**
+ * Root navigation graph inside the shared backdrop and adaptive shell. Starts at the launch
+ * gate (no playlist -> Activation, otherwise Home); live/movies/series destinations are
+ * wrapped in [ManagedDestination] so the server-resolved policy gates them fail-closed.
+ * Reports immersive mode (always on TV, player routes on touch) so the activity can hide
+ * system bars.
+ */
 @Composable
 fun NovaNavGraph(
     onImmersiveChanged: (Boolean) -> Unit = {},
@@ -236,6 +243,11 @@ fun NovaNavGraph(
     }
 }
 
+/**
+ * Gates a destination behind the managed-access policy: renders [content] when the feature
+ * is allowed, otherwise the blocked screen in place of it — no redirect, so the check
+ * re-evaluates on every policy change and blocked routes never flash real content.
+ */
 @Composable
 private fun ManagedDestination(
     feature: ManagedFeature,
@@ -255,6 +267,11 @@ private fun ManagedDestination(
     }
 }
 
+/**
+ * Tab-style navigation between top-level destinations: single-top with state save/restore
+ * so each tab keeps its scroll/focus, popping up to HOME so tabs never stack on the back
+ * stack. No-op when already on the route.
+ */
 private fun NavHostController.navigateTopLevel(route: String) {
     if (currentDestination?.route == route) return
     navigate(route) {
@@ -264,6 +281,11 @@ private fun NavHostController.navigateTopLevel(route: String) {
     }
 }
 
+/**
+ * Launch gate: renders only an empty box over the backdrop while [GateViewModel] resolves,
+ * then routes to Activation (no playlist) or Home, removing GATE from the back stack so
+ * Back exits the app instead of returning here.
+ */
 @Composable
 private fun GateScreen(navController: NavHostController) {
     val viewModel: GateViewModel = hiltViewModel()

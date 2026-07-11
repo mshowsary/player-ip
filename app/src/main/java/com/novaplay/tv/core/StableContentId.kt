@@ -12,6 +12,11 @@ import java.util.Locale
  */
 object StableContentId {
 
+    /**
+     * Hashes the tvg-id (case-insensitive) when present, falling back to the stream URL,
+     * into a positive Long via SHA-256. Re-importing the same playlist therefore keeps
+     * watch state; 0 is remapped to 1 so the id never collides with Room's "unset" key.
+     */
     fun forM3u(
         tvgId: String?,
         url: String,

@@ -11,6 +11,7 @@ import androidx.tv.material3.darkColorScheme
 val OverscanHorizontal = 48.dp
 val OverscanVertical = 27.dp
 
+/** Root theme for every screen: applies the Nova material theme and a readable default content color. */
 @Composable
 fun NovaPlayTheme(content: @Composable () -> Unit) {
     NovaMaterialTheme {
@@ -23,6 +24,8 @@ fun NovaPlayTheme(content: @Composable () -> Unit) {
     }
 }
 
+// Maps the Nova palette onto tv-material's dark color scheme; the app is
+// dark-only, so no light variant exists.
 @Composable
 private fun NovaMaterialTheme(content: @Composable () -> Unit) {
     MaterialTheme(

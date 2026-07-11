@@ -7,6 +7,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.novaplay.tv.ui.components.CatalogGridScreen
 import com.novaplay.tv.ui.components.PosterCard
 
+/**
+ * Movie catalog: category tabs, search, and a poster grid delegated to
+ * [CatalogGridScreen] (Paging 3 windows over Room, including D-pad focus
+ * handling). Cards open the movie details and can toggle a bookmark.
+ */
 @Composable
 fun MoviesScreen(
     onOpenMovie: (movieId: Long) -> Unit,

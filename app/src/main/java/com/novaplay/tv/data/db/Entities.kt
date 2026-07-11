@@ -7,6 +7,12 @@ import androidx.room.FtsOptions
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
+/**
+ * A content source: an Xtream account (server/username/password) or a raw M3U url.
+ * portalId links back to the portal entry that provisioned it, so re-provisioning
+ * updates the existing row. Credential fields may hold sealed values — open them
+ * via PlaylistSecrets before use. At most one playlist is active at a time.
+ */
 @Entity(
     tableName = "playlists",
     indices = [Index(value = ["portalId"], unique = true)],
@@ -31,6 +37,7 @@ data class Playlist(
     }
 }
 
+/** Live TV category; wiped and re-inserted on every sync, sortOrder preserves the provider's ordering. */
 @Entity(
     tableName = "live_categories",
     indices = [Index("playlistId")],
@@ -51,6 +58,7 @@ data class LiveCategory(
     val sortOrder: Int,
 )
 
+/** VOD category; same sync lifecycle and ordering rules as [LiveCategory]. */
 @Entity(
     tableName = "vod_categories",
     indices = [Index("playlistId")],
@@ -71,6 +79,7 @@ data class VodCategory(
     val sortOrder: Int,
 )
 
+/** Series category; same sync lifecycle and ordering rules as [LiveCategory]. */
 @Entity(
     tableName = "series_categories",
     indices = [Index("playlistId")],
@@ -121,6 +130,8 @@ data class LiveChannel(
     val urlOverride: String? = null,
 )
 
+// Browse paths are (playlistId, categoryId, name) and (playlistId, name), both indexed
+// for scan-free paged windows. categoryId deliberately has no FK — see LiveChannel.
 @Entity(
     tableName = "movies",
     indices = [
@@ -153,6 +164,8 @@ data class Movie(
     val backdropUrl: String? = null,
 )
 
+// Same indexing and categoryId rationale as movies; plot/backdrop may arrive with the
+// list sync or be filled later from get_series_info.
 @Entity(
     tableName = "series",
     indices = [
@@ -259,10 +272,12 @@ data class RecentView(
 @Entity(tableName = "live_channel_fts")
 data class LiveChannelFts(val name: String)
 
+/** Same external-content FTS4 setup as [LiveChannelFts], over movie names. */
 @Fts4(contentEntity = Movie::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
 @Entity(tableName = "movie_fts")
 data class MovieFts(val name: String)
 
+/** Same external-content FTS4 setup as [LiveChannelFts], over series names. */
 @Fts4(contentEntity = Series::class, tokenizer = FtsOptions.TOKENIZER_UNICODE61)
 @Entity(tableName = "series_fts")
 data class SeriesFts(val name: String)

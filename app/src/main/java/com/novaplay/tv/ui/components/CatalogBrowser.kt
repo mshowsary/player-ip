@@ -58,21 +58,25 @@ class CatalogBrowser<T : Any>(
             }
             .cachedIn(scope)
 
+    /** Switches browse mode to [categoryId] (null = all titles), discarding any active search. */
     fun selectCategory(categoryId: Long?) {
         _searchActive.value = false
         _searchQuery.value = ""
         _selectedCategoryId.value = categoryId
     }
 
+    /** Enters search mode; results only replace browsing once the query reaches 2 characters. */
     fun openSearch() {
         _searchActive.value = true
     }
 
+    /** Leaves search mode and clears the query, restoring the previously selected category. */
     fun closeSearch() {
         _searchActive.value = false
         _searchQuery.value = ""
     }
 
+    /** Records the raw query text; debounce and min-length filtering happen downstream. */
     fun onSearchQueryChange(query: String) {
         _searchQuery.value = query
     }

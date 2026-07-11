@@ -173,6 +173,8 @@ fun <T : Any> CatalogGridScreen(
     }
 }
 
+// Shimmer placeholder shown while the first page loads: derives the column
+// count from the available width so it mirrors the real GridCells.Adaptive grid.
 @Composable
 private fun ResponsivePosterSkeleton(
     posterMinWidthDp: Int,

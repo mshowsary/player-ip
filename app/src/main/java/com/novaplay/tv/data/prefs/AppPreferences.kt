@@ -15,18 +15,21 @@ import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** User override for navigation style; AUTO defers to runtime device detection. */
 enum class UiModePreference(val label: String) {
     AUTO("Auto"),
     TOUCH("Touch"),
     TV("TV / remote"),
 }
 
+/** Container requested for live streams; AUTO lets the app choose per provider. */
 enum class LiveFormat(val label: String) {
     AUTO("Auto"),
     HLS("HLS"),
     TS("MPEG-TS"),
 }
 
+/** Background refresh cadence; a null [intervalHours] means no work is scheduled at all. */
 enum class BackgroundSyncMode(
     val label: String,
     val intervalHours: Long?,
@@ -37,6 +40,7 @@ enum class BackgroundSyncMode(
     TWICE_DAILY("Twice daily", 12L, "Refresh about every 12 hours on Wi-Fi or Ethernet"),
 }
 
+/** Caption text height as a fraction of the video view, per fractional text sizing. */
 enum class SubtitleSize(val label: String, val fraction: Float) {
     SMALL("Small", 0.045f),
     MEDIUM("Medium", 0.0533f),
@@ -44,6 +48,7 @@ enum class SubtitleSize(val label: String, val fraction: Float) {
     XLARGE("Extra-Large", 0.085f),
 }
 
+/** Caption foreground color (ARGB). */
 enum class SubtitleColor(val label: String, val argb: Int) {
     WHITE("White", 0xFFFFFFFF.toInt()),
     YELLOW("Yellow", 0xFFFFE55C.toInt()),
@@ -51,18 +56,21 @@ enum class SubtitleColor(val label: String, val argb: Int) {
     GREEN("Green", 0xFF7CFC9A.toInt()),
 }
 
+/** Caption window backing, from fully transparent to solid black for readability. */
 enum class SubtitleBackground(val label: String, val argb: Int) {
     TRANSPARENT("Transparent", 0x00000000),
     SEMI("Semi-black", 0xA6000000.toInt()),
     SOLID("Solid black", 0xFF000000.toInt()),
 }
 
+/** Caption glyph edge treatment, useful when the background is transparent. */
 enum class SubtitleEdge(val label: String) {
     NONE("None"),
     OUTLINE("Outline"),
     DROP_SHADOW("Drop shadow"),
 }
 
+/** Combined caption styling applied to the player's subtitle view. */
 data class SubtitleStyle(
     val size: SubtitleSize = SubtitleSize.MEDIUM,
     val color: SubtitleColor = SubtitleColor.WHITE,
@@ -79,6 +87,7 @@ data class PlaybackTrackPreferences(
     val subtitleLabel: String? = null,
 )
 
+/** Snapshot of the most recent catalogue sync, surfaced on the diagnostics screen. */
 data class LastSyncSummary(
     val completedAtEpochMs: Long = 0L,
     val durationMs: Long = 0L,
@@ -95,6 +104,11 @@ data class LastSyncSummary(
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
 
+/**
+ * DataStore-backed app settings. Flows are distinct-until-changed so collectors only
+ * recompose on real changes; the suspend getters read a single snapshot. Secrets never
+ * live here — credentials and tokens go through the data.security stores.
+ */
 @Singleton
 class AppPreferences @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -126,23 +140,31 @@ class AppPreferences @Inject constructor(
         val LAST_SYNC_ERROR = stringPreferencesKey("last_sync_error")
     }
 
+    // By-name enum lookup falling back to the default, so a stored value that no longer
+    // exists (renamed/removed entry) degrades gracefully instead of crashing.
     private inline fun <reified T : Enum<T>> String?.toEnum(default: T): T =
         this?.let { name -> enumValues<T>().firstOrNull { it.name == name } } ?: default
 
+    /** Installation UUID used as the primary portal identity; null until first generated. */
     suspend fun deviceId(): String? = context.dataStore.data.first()[Keys.DEVICE_ID]
 
+    /** Persists the installation UUID; written once by DeviceIdentity, then immutable. */
     suspend fun setDeviceId(id: String) {
         context.dataStore.edit { it[Keys.DEVICE_ID] = id }
     }
 
+    /** Legacy display MAC resolved by DeviceIdentity; null before first resolution. */
     suspend fun deviceMac(): String? = context.dataStore.data.first()[Keys.DEVICE_MAC]
 
+    /** Caches the resolved MAC so hardware lookups only ever happen once per install. */
     suspend fun setDeviceMac(mac: String) {
         context.dataStore.edit { it[Keys.DEVICE_MAC] = mac }
     }
 
+    /** Six-character human-readable pairing key shown for legacy portal linking. */
     suspend fun deviceKey(): String? = context.dataStore.data.first()[Keys.DEVICE_KEY]
 
+    /** Persists the generated pairing key; written once by DeviceIdentity. */
     suspend fun setDeviceKey(key: String) {
         context.dataStore.edit { it[Keys.DEVICE_KEY] = key }
     }
@@ -151,6 +173,7 @@ class AppPreferences @Inject constructor(
         .map { it[Keys.UI_MODE].toEnum(UiModePreference.AUTO) }
         .distinctUntilChanged()
 
+    /** Stores the navigation-style override; takes effect live via [uiMode] collectors. */
     suspend fun setUiMode(mode: UiModePreference) {
         context.dataStore.edit { it[Keys.UI_MODE] = mode.name }
     }
@@ -159,6 +182,7 @@ class AppPreferences @Inject constructor(
         .map { it[Keys.LIVE_FORMAT].toEnum(LiveFormat.AUTO) }
         .distinctUntilChanged()
 
+    /** Stores the live-stream container preference; applies to newly started playback. */
     suspend fun setLiveFormat(format: LiveFormat) {
         context.dataStore.edit { it[Keys.LIVE_FORMAT] = format.name }
     }
@@ -167,6 +191,10 @@ class AppPreferences @Inject constructor(
         .map { it[Keys.BACKGROUND_SYNC_MODE].toEnum(BackgroundSyncMode.DAILY) }
         .distinctUntilChanged()
 
+    /**
+     * Persists the cadence only — rescheduling WorkManager is the caller's job
+     * (BackgroundSyncScheduler.apply); nothing observes this flow to auto-reschedule.
+     */
     suspend fun setBackgroundSyncMode(mode: BackgroundSyncMode) {
         context.dataStore.edit { it[Keys.BACKGROUND_SYNC_MODE] = mode.name }
     }
@@ -182,6 +210,7 @@ class AppPreferences @Inject constructor(
         }
         .distinctUntilChanged()
 
+    /** Persists all four caption style dimensions atomically in a single edit. */
     suspend fun setSubtitleStyle(style: SubtitleStyle) {
         context.dataStore.edit {
             it[Keys.SUB_SIZE] = style.size.name
@@ -203,6 +232,7 @@ class AppPreferences @Inject constructor(
         }
         .distinctUntilChanged()
 
+    /** Records the user's explicit audio track pick; null values clear the stored choice. */
     suspend fun setAudioTrackPreference(language: String?, label: String?) {
         context.dataStore.edit { prefs ->
             language.storeOrRemove(prefs, Keys.VOD_AUDIO_LANGUAGE)
@@ -210,6 +240,7 @@ class AppPreferences @Inject constructor(
         }
     }
 
+    /** Records the subtitle on/off state and chosen track; nulls clear stale track choices. */
     suspend fun setSubtitleTrackPreference(enabled: Boolean, language: String?, label: String?) {
         context.dataStore.edit { prefs ->
             prefs[Keys.VOD_SUBTITLES_ENABLED] = enabled
@@ -234,6 +265,10 @@ class AppPreferences @Inject constructor(
         }
         .distinctUntilChanged()
 
+    /**
+     * Overwrites the diagnostics snapshot after each sync attempt. The error text is
+     * expected to be pre-sanitized (SafeErrorMessage) so no provider details persist.
+     */
     suspend fun recordSyncSummary(summary: LastSyncSummary) {
         context.dataStore.edit { prefs ->
             prefs[Keys.LAST_SYNC_AT] = summary.completedAtEpochMs
@@ -248,6 +283,7 @@ class AppPreferences @Inject constructor(
         }
     }
 
+    // Blank strings are removed rather than stored, keeping "absent" distinct from "".
     private fun String?.storeOrRemove(
         prefs: androidx.datastore.preferences.core.MutablePreferences,
         key: androidx.datastore.preferences.core.Preferences.Key<String>,
