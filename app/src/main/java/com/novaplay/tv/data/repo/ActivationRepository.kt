@@ -26,11 +26,13 @@ class ActivationRepository @Inject constructor(
     private val deviceIdentity: DeviceIdentity,
     private val db: NovaDatabase,
     private val playlistSecrets: PlaylistSecrets,
+    private val managedAccessRepository: ManagedAccessRepository,
 ) {
     suspend fun hasPlaylists(): Boolean = db.playlistDao().count() > 0
 
     suspend fun checkAndAttach(): ActivationCheck {
         if (BuildConfig.MOCK_ACTIVATION) {
+            managedAccessRepository.applyPortalPolicy(MockPortal.policy)
             attachManagedPlaylists(MockPortal.playlists)
             return ActivationCheck.Activated(MockPortal.playlists.size)
         }
@@ -62,7 +64,9 @@ class ActivationRepository @Inject constructor(
 
         return when {
             response.isSuccessful -> {
-                val playlists = response.body()?.playlists.orEmpty()
+                val body = response.body()
+                managedAccessRepository.applyPortalPolicy(body?.policy)
+                val playlists = body?.playlists.orEmpty()
                 if (playlists.isEmpty()) {
                     ActivationCheck.NotRegistered
                 } else {
