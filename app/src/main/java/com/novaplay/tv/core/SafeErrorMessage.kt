@@ -6,8 +6,12 @@ object SafeErrorMessage {
         val raw = error?.message?.takeIf { it.isNotBlank() } ?: fallback
         return raw
             .replace(URL_REGEX, "[redacted URL]")
-            .replace(CREDENTIAL_QUERY_REGEX, "$1=•••")
-            .replace(CREDENTIAL_JSON_REGEX, "$1•••$3")
+            .replace(CREDENTIAL_QUERY_REGEX) { match ->
+                "${match.groupValues[1]}=•••"
+            }
+            .replace(CREDENTIAL_JSON_REGEX) { match ->
+                "${match.groupValues[1]}•••${match.groupValues[3]}"
+            }
     }
 
     private val URL_REGEX = Regex("""https?://\S+""", RegexOption.IGNORE_CASE)
