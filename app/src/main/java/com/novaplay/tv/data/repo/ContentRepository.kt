@@ -15,6 +15,7 @@ import com.novaplay.tv.data.db.WatchProgress
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.remote.XtreamClient
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -32,15 +33,15 @@ class ContentRepository @Inject constructor(
 
     suspend fun setActivePlaylist(id: Long) = db.playlistDao().setActive(id)
 
-    // Deleting cascades that playlist's content; if the active one goes away,
-    // promote any remaining playlist. Returns how many are left.
+    // Deleting cascades that playlist's catalog; stable user state has no FK so
+    // it is cleaned explicitly. Returns how many playlists are left.
     suspend fun deletePlaylist(id: Long): Int {
         val dao = db.playlistDao()
         val wasActive = dao.getActive()?.id == id
         dao.delete(id)
-        // Bookmarks/recents have no FK (they must survive syncs) — clean here.
         db.bookmarkDao().wipeForPlaylist(id)
         db.recentViewDao().wipeForPlaylist(id)
+        db.watchProgressDao().wipeForPlaylist(id)
         val remaining = dao.getAll()
         if (wasActive) {
             remaining.firstOrNull()?.let { dao.setActive(it.id) }
@@ -236,11 +237,21 @@ class ContentRepository @Inject constructor(
 
     // ---- Watch progress ----
 
+    // The route still carries a local row id, but DAO joins immediately resolve
+    // it to the stable (playlistId, provider remote id) progress key.
     suspend fun watchProgress(mediaType: String, mediaId: Long): WatchProgress? =
-        db.watchProgressDao().get(mediaType, mediaId)
+        when (mediaType) {
+            WatchProgress.MEDIA_MOVIE -> db.watchProgressDao().getForMovie(mediaId)
+            WatchProgress.MEDIA_EPISODE -> db.watchProgressDao().getForEpisode(mediaId)
+            else -> null
+        }
 
     fun observeWatchProgress(mediaType: String, mediaId: Long): Flow<WatchProgress?> =
-        db.watchProgressDao().observe(mediaType, mediaId)
+        when (mediaType) {
+            WatchProgress.MEDIA_MOVIE -> db.watchProgressDao().observeForMovie(mediaId)
+            WatchProgress.MEDIA_EPISODE -> db.watchProgressDao().observeForEpisode(mediaId)
+            else -> flowOf(null)
+        }
 
     fun watchProgressForSeries(seriesLocalId: Long): Flow<List<WatchProgress>> =
         db.watchProgressDao().forSeries(seriesLocalId)
