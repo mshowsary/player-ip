@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.novaplay.tv.ui.theme.isTvDevice
@@ -147,20 +148,24 @@ fun NovaButton(
         focusedContainerColor = MaterialTheme.colorScheme.primary,
         focusedScale = 1.06f,
     ) {
-        FocusAwareButtonLabel(text)
+        FocusAwareButtonLabel(text = text, prominent = prominent)
     }
 }
 
 @Composable
-private fun BoxScope.FocusAwareButtonLabel(text: String) {
-    // Content color flips via LocalContentColor from the Surface colors; only
-    // the label itself is needed here.
+private fun BoxScope.FocusAwareButtonLabel(text: String, prominent: Boolean) {
+    // Secondary actions use a compact one-line label so paired buttons never
+    // break a final word onto its own line on narrow phones or dialogs.
     Text(
         text = text,
-        style = MaterialTheme.typography.titleMedium,
+        style = if (prominent) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
         modifier = Modifier
             .align(Alignment.Center)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = if (prominent) 18.dp else 12.dp, vertical = 12.dp),
     )
 }
 
