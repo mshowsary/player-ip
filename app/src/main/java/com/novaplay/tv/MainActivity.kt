@@ -32,7 +32,7 @@ class MainActivity : ComponentActivity() {
 
             ProvideAdaptiveEnvironment(preference = uiMode) {
                 NovaPlayTheme {
-                    NovaNavGraph(onImmersiveChanged = ::setImmersive)
+                    NovaNavGraph(onImmersiveChanged = ::updateImmersiveMode)
                 }
             }
         }
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
         if (hasFocus && immersiveNow) applySystemBars(hidden = true)
     }
 
-    private fun setImmersive(hidden: Boolean) {
+    private fun updateImmersiveMode(hidden: Boolean) {
         immersiveNow = hidden
         applySystemBars(hidden)
     }
