@@ -15,6 +15,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.WatchProgress
 import com.novaplay.tv.data.prefs.AppPreferences
+import com.novaplay.tv.data.prefs.PlaybackTrackPreferences
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.di.ApplicationScope
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
@@ -39,12 +41,14 @@ data class TrackOption(
     val groupIndex: Int,
     val trackIndex: Int,
     val label: String,
+    val languageTag: String? = null,
+    val rawLabel: String? = null,
     val selected: Boolean,
 )
 
 data class VodPlayerUiState(
     val title: String = "",
-    val episodeTag: String? = null, // "S01E04"
+    val episodeTag: String? = null,
     val playing: Boolean = false,
     val buffering: Boolean = true,
     val positionMs: Long = 0,
@@ -53,6 +57,8 @@ data class VodPlayerUiState(
     val audioTracks: List<TrackOption> = emptyList(),
     val textTracks: List<TrackOption> = emptyList(),
     val textEnabled: Boolean = true,
+    val recoveryMessage: String? = null,
+    val completed: Boolean = false,
     val error: String? = null,
 )
 
@@ -62,12 +68,19 @@ private data class ProgressIdentity(
     val remoteId: Long,
 )
 
+private data class TrackCandidate(
+    val groupIndex: Int,
+    val trackIndex: Int,
+    val language: String?,
+    val label: String?,
+)
+
 @HiltViewModel
 class VodPlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
     savedStateHandle: SavedStateHandle,
     private val contentRepository: ContentRepository,
-    prefs: AppPreferences,
+    private val prefs: AppPreferences,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -84,49 +97,92 @@ class VodPlayerViewModel @Inject constructor(
     val player: ExoPlayer = ExoPlayer.Builder(context).build()
 
     private var hideControlsJob: Job? = null
+    private var recoveryJob: Job? = null
+    private var bufferingWatchdog: Job? = null
+    private var stablePlaybackJob: Job? = null
     private var lastSeekAt = 0L
     private var seekStreak = 0
     private var progressIdentity: ProgressIdentity? = null
+    private var mediaUrl: String? = null
+    private var recoveryAttempts = 0
+    private var wasPlayingBeforeStop = false
+    private var trackPreferences = PlaybackTrackPreferences()
+    private var trackPreferencesApplied = false
 
     init {
         player.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                _uiState.update { it.copy(buffering = playbackState == Player.STATE_BUFFERING) }
-                if (playbackState == Player.STATE_READY) {
-                    _uiState.update { it.copy(durationMs = player.duration.coerceAtLeast(0)) }
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> {
+                        _uiState.update { it.copy(buffering = true) }
+                        startBufferingWatchdog()
+                    }
+                    Player.STATE_READY -> {
+                        bufferingWatchdog?.cancel()
+                        _uiState.update {
+                            it.copy(
+                                buffering = false,
+                                durationMs = player.duration.coerceAtLeast(0L),
+                                completed = false,
+                            )
+                        }
+                    }
+                    Player.STATE_ENDED -> {
+                        bufferingWatchdog?.cancel()
+                        stablePlaybackJob?.cancel()
+                        _uiState.update {
+                            it.copy(
+                                playing = false,
+                                buffering = false,
+                                controlsVisible = true,
+                                recoveryMessage = null,
+                                completed = true,
+                                positionMs = player.duration.coerceAtLeast(0L),
+                            )
+                        }
+                        viewModelScope.launch { persistProgress(forceComplete = true) }
+                    }
                 }
             }
 
             override fun onIsPlayingChanged(isPlaying: Boolean) {
-                _uiState.update { it.copy(playing = isPlaying) }
+                _uiState.update {
+                    it.copy(
+                        playing = isPlaying,
+                        recoveryMessage = if (isPlaying) null else it.recoveryMessage,
+                    )
+                }
+                if (isPlaying) scheduleStablePlaybackReset() else stablePlaybackJob?.cancel()
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                _uiState.update { it.copy(error = "Playback failed — the file may be unavailable") }
+                handlePlaybackFailure(error)
             }
 
-            // Tracks arrive after prepare, not at init: button visibility and
-            // dialog contents are recomputed here.
             override fun onTracksChanged(tracks: Tracks) {
+                applyStoredTrackPreferences(tracks)
                 rebuildTrackOptions(tracks)
             }
         })
 
-        viewModelScope.launch { load() }
+        viewModelScope.launch {
+            trackPreferences = prefs.playbackTrackPreferences.first()
+            load()
+        }
 
-        // UI position ticker + progress persistence every 10 s.
+        // Frequent persistence keeps Resume accurate without writing on every frame.
         viewModelScope.launch {
             var lastSaveAt = 0L
             while (isActive) {
                 if (player.playbackState == Player.STATE_READY || player.playbackState == Player.STATE_BUFFERING) {
                     _uiState.update {
                         it.copy(
-                            positionMs = player.currentPosition.coerceAtLeast(0),
-                            durationMs = player.duration.coerceAtLeast(0),
+                            positionMs = player.currentPosition.coerceAtLeast(0L),
+                            durationMs = player.duration.coerceAtLeast(0L),
                         )
                     }
                     val now = SystemClock.elapsedRealtime()
-                    if (player.isPlaying && now - lastSaveAt >= 10_000) {
+                    if (player.isPlaying && now - lastSaveAt >= PROGRESS_SAVE_INTERVAL_MS) {
                         lastSaveAt = now
                         persistProgress()
                     }
@@ -139,7 +195,7 @@ class VodPlayerViewModel @Inject constructor(
     }
 
     private suspend fun load() {
-        val loaded: Pair<String, String?>? = when (mediaType) {
+        val url = when (mediaType) {
             Routes.MEDIA_TYPE_MOVIE -> {
                 val movie = contentRepository.movieById(mediaId)
                 movie?.let {
@@ -148,13 +204,13 @@ class VodPlayerViewModel @Inject constructor(
                         mediaType = WatchProgress.MEDIA_MOVIE,
                         remoteId = movie.streamId,
                     )
-                    _uiState.update { s -> s.copy(title = movie.name) }
+                    _uiState.update { state -> state.copy(title = movie.name) }
                     contentRepository.recordRecentView(
                         playlistId = movie.playlistId,
                         mediaType = Bookmark.MEDIA_MOVIE,
                         remoteId = movie.streamId,
                     )
-                    contentRepository.movieStreamUrl(movie)?.let { url -> url to null }
+                    contentRepository.movieStreamUrl(movie)
                 }
             }
             Routes.MEDIA_TYPE_EPISODE -> {
@@ -167,36 +223,139 @@ class VodPlayerViewModel @Inject constructor(
                     )
                     val series = contentRepository.seriesById(episode.seriesLocalId)
                     val tag = "S%02dE%02d".format(Locale.US, episode.season, episode.episodeNum)
-                    _uiState.update { s ->
-                        s.copy(title = series?.name ?: episode.title, episodeTag = tag)
+                    _uiState.update { state ->
+                        state.copy(title = series?.name ?: episode.title, episodeTag = tag)
                     }
-                    series?.let { s ->
+                    series?.let { item ->
                         contentRepository.recordRecentView(
-                            playlistId = s.playlistId,
+                            playlistId = item.playlistId,
                             mediaType = Bookmark.MEDIA_SERIES,
-                            remoteId = s.seriesId,
+                            remoteId = item.seriesId,
                         )
                     }
-                    contentRepository.episodeStreamUrl(episode)?.let { url -> url to tag }
+                    contentRepository.episodeStreamUrl(episode)
                 }
             }
             else -> null
         }
 
-        val url = loaded?.first ?: run {
-            _uiState.update { it.copy(error = "Media not found") }
+        mediaUrl = url
+        if (url == null) {
+            _uiState.update { it.copy(error = "Media not found", buffering = false) }
             return
         }
 
-        val startPosition = if (resume) {
-            contentRepository.watchProgress(mediaType, mediaId)?.positionMs ?: 0L
-        } else {
-            0L
-        }
+        val saved = if (resume) contentRepository.watchProgress(mediaType, mediaId) else null
+        val startPosition = saved?.let {
+            VodResumePolicy.resumeStart(it.positionMs, it.durationMs)
+        } ?: 0L
 
-        player.setMediaItem(MediaItem.fromUri(url), startPosition)
+        prepareAt(positionMs = startPosition, recoveryMessage = null, resetRecovery = true)
+    }
+
+    private fun prepareAt(
+        positionMs: Long,
+        recoveryMessage: String?,
+        resetRecovery: Boolean = false,
+    ) {
+        val url = mediaUrl ?: return
+        if (resetRecovery) recoveryAttempts = 0
+        recoveryJob?.cancel()
+        bufferingWatchdog?.cancel()
+        stablePlaybackJob?.cancel()
+        trackPreferencesApplied = false
+        _uiState.update {
+            it.copy(
+                error = null,
+                buffering = true,
+                completed = false,
+                recoveryMessage = recoveryMessage,
+            )
+        }
+        player.setMediaItem(MediaItem.fromUri(url), positionMs.coerceAtLeast(0L))
         player.prepare()
         player.playWhenReady = true
+    }
+
+    // ---- recovery ----
+
+    private fun handlePlaybackFailure(error: PlaybackException) {
+        val recoverable = when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            -> true
+            else -> false
+        }
+        recoverOrFail(recoverable, playbackErrorMessage(error))
+    }
+
+    private fun startBufferingWatchdog() {
+        bufferingWatchdog?.cancel()
+        bufferingWatchdog = viewModelScope.launch {
+            delay(VodRecoveryPolicy.BUFFERING_TIMEOUT_MS)
+            if (
+                player.playbackState == Player.STATE_BUFFERING &&
+                _uiState.value.error == null &&
+                recoveryJob?.isActive != true
+            ) {
+                recoverOrFail(
+                    recoverable = true,
+                    terminalMessage = "Playback could not continue after repeated buffering",
+                )
+            }
+        }
+    }
+
+    private fun recoverOrFail(recoverable: Boolean, terminalMessage: String) {
+        bufferingWatchdog?.cancel()
+        stablePlaybackJob?.cancel()
+        if (recoveryJob?.isActive == true) return
+
+        if (!VodRecoveryPolicy.canRecover(recoveryAttempts, recoverable)) {
+            _uiState.update {
+                it.copy(
+                    error = terminalMessage,
+                    buffering = false,
+                    recoveryMessage = null,
+                    controlsVisible = false,
+                )
+            }
+            return
+        }
+
+        recoveryAttempts++
+        val attempt = recoveryAttempts
+        val resumePosition = player.currentPosition
+            .takeIf { it >= 0L }
+            ?: _uiState.value.positionMs
+        val message = VodRecoveryPolicy.messageForAttempt(attempt)
+        player.pause()
+        _uiState.update { it.copy(buffering = true, recoveryMessage = message, error = null) }
+        recoveryJob = viewModelScope.launch {
+            delay(VodRecoveryPolicy.delayForAttempt(attempt))
+            prepareAt(resumePosition, recoveryMessage = message)
+        }
+    }
+
+    private fun scheduleStablePlaybackReset() {
+        stablePlaybackJob?.cancel()
+        stablePlaybackJob = viewModelScope.launch {
+            delay(VodRecoveryPolicy.STABLE_PLAYBACK_RESET_MS)
+            if (player.isPlaying) {
+                recoveryAttempts = 0
+                _uiState.update { it.copy(recoveryMessage = null) }
+            }
+        }
+    }
+
+    private fun playbackErrorMessage(error: PlaybackException): String = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+        PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+        -> "Network error — check your connection and try again"
+        PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS ->
+            "The provider did not make this video available"
+        else -> "Playback failed — this file or codec may not be supported"
     }
 
     // ---- controls ----
@@ -215,7 +374,6 @@ class VodPlayerViewModel @Inject constructor(
         if (_uiState.value.controlsVisible) scheduleControlsHide()
     }
 
-    // Touch: single tap on the video toggles the overlay.
     fun toggleControls() {
         if (_uiState.value.controlsVisible) hideControls() else showControls()
     }
@@ -224,12 +382,18 @@ class VodPlayerViewModel @Inject constructor(
         hideControlsJob?.cancel()
         hideControlsJob = viewModelScope.launch {
             delay(CONTROLS_HIDE_MS)
-            _uiState.update { it.copy(controlsVisible = false) }
+            if (!_uiState.value.completed && _uiState.value.error == null) {
+                _uiState.update { it.copy(controlsVisible = false) }
+            }
         }
     }
 
     fun togglePlayPause() {
-        if (player.isPlaying) {
+        if (_uiState.value.completed || player.playbackState == Player.STATE_ENDED) {
+            player.seekTo(0L)
+            player.play()
+            _uiState.update { it.copy(completed = false) }
+        } else if (player.isPlaying) {
             player.pause()
             viewModelScope.launch { persistProgress() }
         } else {
@@ -238,30 +402,103 @@ class VodPlayerViewModel @Inject constructor(
         showControls()
     }
 
-    // ±10 s, accelerating up to 60 s while the key repeats.
+    // ±10 s, accelerating up to 60 s while a D-pad key repeats.
     fun seekBy(direction: Int) {
         val now = SystemClock.elapsedRealtime()
         seekStreak = if (now - lastSeekAt < 700) seekStreak + 1 else 0
         lastSeekAt = now
         val multiplier = 1 + (seekStreak / 3).coerceAtMost(5)
-        val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: Long.MAX_VALUE
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: return
         val target = (player.currentPosition + direction * 10_000L * multiplier)
             .coerceIn(0L, duration)
         player.seekTo(target)
-        _uiState.update { it.copy(positionMs = target) }
+        _uiState.update { it.copy(positionMs = target, completed = target >= duration) }
         showControls()
     }
 
-    // Touch: absolute seek from a tap or scrub on the progress bar.
     fun seekToFraction(fraction: Float) {
-        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L } ?: return
         val target = (duration * fraction.coerceIn(0f, 1f)).toLong()
         player.seekTo(target)
-        _uiState.update { it.copy(positionMs = target) }
+        _uiState.update { it.copy(positionMs = target, completed = target >= duration) }
         showControls()
     }
 
     // ---- track selection ----
+
+    private fun applyStoredTrackPreferences(tracks: Tracks) {
+        if (trackPreferencesApplied) return
+        trackPreferencesApplied = true
+        val builder = player.trackSelectionParameters.buildUpon()
+        var changed = false
+
+        findPreferredTrack(
+            tracks = tracks,
+            type = C.TRACK_TYPE_AUDIO,
+            language = trackPreferences.audioLanguage,
+            label = trackPreferences.audioLabel,
+        )?.let { candidate ->
+            val group = tracks.groups.getOrNull(candidate.groupIndex) ?: return@let
+            builder.setOverrideForType(
+                TrackSelectionOverride(group.mediaTrackGroup, candidate.trackIndex),
+            )
+            changed = true
+        }
+
+        if (!trackPreferences.subtitlesEnabled) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            changed = true
+        } else {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            findPreferredTrack(
+                tracks = tracks,
+                type = C.TRACK_TYPE_TEXT,
+                language = trackPreferences.subtitleLanguage,
+                label = trackPreferences.subtitleLabel,
+            )?.let { candidate ->
+                val group = tracks.groups.getOrNull(candidate.groupIndex) ?: return@let
+                builder.setOverrideForType(
+                    TrackSelectionOverride(group.mediaTrackGroup, candidate.trackIndex),
+                )
+                changed = true
+            }
+        }
+
+        if (changed) player.trackSelectionParameters = builder.build()
+    }
+
+    private fun findPreferredTrack(
+        tracks: Tracks,
+        type: Int,
+        language: String?,
+        label: String?,
+    ): TrackCandidate? {
+        if (language.isNullOrBlank() && label.isNullOrBlank()) return null
+        val candidates = buildList {
+            tracks.groups.forEachIndexed { groupIndex, group ->
+                if (group.type != type) return@forEachIndexed
+                for (trackIndex in 0 until group.length) {
+                    if (!group.isTrackSupported(trackIndex)) continue
+                    val format = group.getTrackFormat(trackIndex)
+                    add(
+                        TrackCandidate(
+                            groupIndex = groupIndex,
+                            trackIndex = trackIndex,
+                            language = format.language,
+                            label = format.label,
+                        ),
+                    )
+                }
+            }
+        }
+        val normalizedLanguage = language.normalizePreference()
+        val normalizedLabel = label.normalizePreference()
+        return candidates.firstOrNull {
+            normalizedLanguage != null && it.language.normalizePreference() == normalizedLanguage
+        } ?: candidates.firstOrNull {
+            normalizedLabel != null && it.label.normalizePreference() == normalizedLabel
+        }
+    }
 
     private fun rebuildTrackOptions(tracks: Tracks) {
         val audio = mutableListOf<TrackOption>()
@@ -275,12 +512,16 @@ class VodPlayerViewModel @Inject constructor(
                         groupIndex = groupIndex,
                         trackIndex = trackIndex,
                         label = audioLabel(format.language, format.label, format.channelCount),
+                        languageTag = format.language,
+                        rawLabel = format.label,
                         selected = group.isTrackSelected(trackIndex),
                     )
                     C.TRACK_TYPE_TEXT -> text += TrackOption(
                         groupIndex = groupIndex,
                         trackIndex = trackIndex,
                         label = textLabel(format.language, format.label),
+                        languageTag = format.language,
+                        rawLabel = format.label,
                         selected = group.isTrackSelected(trackIndex),
                     )
                 }
@@ -301,12 +542,18 @@ class VodPlayerViewModel @Inject constructor(
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
             .build()
+        trackPreferences = trackPreferences.copy(
+            audioLanguage = option.languageTag,
+            audioLabel = option.rawLabel,
+        )
+        viewModelScope.launch {
+            prefs.setAudioTrackPreference(option.languageTag, option.rawLabel)
+        }
         showControls()
     }
 
     fun selectTextTrack(option: TrackOption?) {
         player.trackSelectionParameters = if (option == null) {
-            // "Off" — disable the whole text renderer.
             player.trackSelectionParameters.buildUpon()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .build()
@@ -316,6 +563,18 @@ class VodPlayerViewModel @Inject constructor(
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                 .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, option.trackIndex))
                 .build()
+        }
+        trackPreferences = trackPreferences.copy(
+            subtitlesEnabled = option != null,
+            subtitleLanguage = option?.languageTag,
+            subtitleLabel = option?.rawLabel,
+        )
+        viewModelScope.launch {
+            prefs.setSubtitleTrackPreference(
+                enabled = option != null,
+                language = option?.languageTag,
+                label = option?.rawLabel,
+            )
         }
         _uiState.update { it.copy(textEnabled = option != null) }
         showControls()
@@ -337,34 +596,53 @@ class VodPlayerViewModel @Inject constructor(
     }
 
     private fun textLabel(language: String?, label: String?): String =
-        (language.displayLanguageOrNull() ?: label ?: "Subtitle track")
+        language.displayLanguageOrNull() ?: label ?: "Subtitle track"
 
     private fun String?.displayLanguageOrNull(): String? =
         this?.takeIf { it.isNotBlank() && it != C.LANGUAGE_UNDETERMINED }
             ?.let { code ->
                 Locale.forLanguageTag(code).displayLanguage
                     .takeIf { it.isNotBlank() && it != code }
-                    ?.replaceFirstChar { ch -> ch.uppercase() }
+                    ?.replaceFirstChar { char -> char.uppercase() }
                     ?: code
             }
 
-    // ---- lifecycle ----
+    private fun String?.normalizePreference(): String? =
+        this?.trim()?.lowercase(Locale.ROOT)?.takeIf { it.isNotEmpty() }
+
+    // ---- lifecycle and progress ----
 
     fun onLifecycleStop() {
+        wasPlayingBeforeStop = player.isPlaying
         player.pause()
         viewModelScope.launch { persistProgress() }
     }
 
-    fun retry() {
-        _uiState.update { it.copy(error = null, buffering = true) }
-        viewModelScope.launch { load() }
+    fun onLifecycleStart() {
+        if (wasPlayingBeforeStop && _uiState.value.error == null && !_uiState.value.completed) {
+            player.play()
+        }
+        wasPlayingBeforeStop = false
     }
 
-    private suspend fun persistProgress() {
+    fun retry() {
+        recoveryAttempts = 0
+        val resumePosition = _uiState.value.positionMs.coerceAtLeast(0L)
+        prepareAt(resumePosition, recoveryMessage = "Restoring playback…", resetRecovery = true)
+    }
+
+    private suspend fun persistProgress(forceComplete: Boolean = false) {
         val identity = progressIdentity ?: return
-        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
-        val position = player.currentPosition.coerceIn(0, duration)
-        if (position < 10_000) return
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+            ?: _uiState.value.durationMs.takeIf { it > 0L }
+            ?: return
+        val rawPosition = if (forceComplete) duration else player.currentPosition.coerceAtLeast(0L)
+        if (!forceComplete && !VodResumePolicy.shouldPersist(rawPosition, duration)) return
+        val position = if (forceComplete) {
+            duration
+        } else {
+            VodResumePolicy.normalizedSavedPosition(rawPosition, duration)
+        }
         contentRepository.saveWatchProgress(
             WatchProgress(
                 playlistId = identity.playlistId,
@@ -379,17 +657,24 @@ class VodPlayerViewModel @Inject constructor(
 
     override fun onCleared() {
         hideControlsJob?.cancel()
-        // Persist final position synchronously enough: player is still valid here.
+        recoveryJob?.cancel()
+        bufferingWatchdog?.cancel()
+        stablePlaybackJob?.cancel()
         val identity = progressIdentity
-        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 }
-        val position = player.currentPosition
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0L }
+        val rawPosition = player.currentPosition.coerceAtLeast(0L)
+        val completed = _uiState.value.completed
         player.release()
-        if (identity != null && duration != null && position >= 10_000) {
+        if (identity != null && duration != null && (completed || VodResumePolicy.shouldPersist(rawPosition, duration))) {
             val progress = WatchProgress(
                 playlistId = identity.playlistId,
                 mediaType = identity.mediaType,
                 remoteId = identity.remoteId,
-                positionMs = position.coerceAtMost(duration),
+                positionMs = if (completed) {
+                    duration
+                } else {
+                    VodResumePolicy.normalizedSavedPosition(rawPosition, duration)
+                },
                 durationMs = duration,
                 updatedAt = System.currentTimeMillis(),
             )
@@ -399,5 +684,6 @@ class VodPlayerViewModel @Inject constructor(
 
     private companion object {
         const val CONTROLS_HIDE_MS = 5_000L
+        const val PROGRESS_SAVE_INTERVAL_MS = 5_000L
     }
 }
