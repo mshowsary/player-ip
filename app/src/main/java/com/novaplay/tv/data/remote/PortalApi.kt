@@ -21,13 +21,30 @@ data class PortalPlaylistDto(
     val url: String? = null,
 )
 
+/**
+ * Server-resolved device policy. Country, tenant and reseller rules are
+ * evaluated by the portal; the Android client only consumes the resulting
+ * service entitlements and device lifecycle state.
+ */
+@Serializable
+data class PortalPolicyDto(
+    val status: String = "active",
+    @SerialName("allow_live") val allowLive: Boolean = true,
+    @SerialName("allow_movies") val allowMovies: Boolean = true,
+    @SerialName("allow_series") val allowSeries: Boolean = true,
+    val message: String? = null,
+    @SerialName("support_code") val supportCode: String? = null,
+    @SerialName("policy_revision") val revision: Long = 0L,
+)
+
 @Serializable
 data class PortalPlaylistsResponse(
     val playlists: List<PortalPlaylistDto> = emptyList(),
+    val policy: PortalPolicyDto? = null,
 )
 
 /**
- * Device-code pairing contract used by the future provider/reseller portal.
+ * Device-code pairing contract used by the provider/reseller portal.
  *
  * The TV creates a short-lived session, displays [PairingSessionDto.userCode],
  * and polls with a high-entropy session secret. The human-readable code is not
@@ -60,6 +77,7 @@ data class PairingStatusDto(
     @SerialName("refresh_token") val refreshToken: String? = null,
     @SerialName("expires_in") val expiresInSeconds: Long? = null,
     val playlists: List<PortalPlaylistDto> = emptyList(),
+    val policy: PortalPolicyDto? = null,
 )
 
 @Serializable
@@ -108,6 +126,16 @@ interface PortalApi {
 
 // Debug-only stand-in until the real portal exists (BuildConfig.MOCK_ACTIVATION).
 object MockPortal {
+    val policy = PortalPolicyDto(
+        status = "active",
+        allowLive = true,
+        allowMovies = true,
+        allowSeries = true,
+        message = "Managed services are active on this device.",
+        supportCode = "MOCK-ACTIVE",
+        revision = 1L,
+    )
+
     val playlists = listOf(
         PortalPlaylistDto(
             id = 1,
