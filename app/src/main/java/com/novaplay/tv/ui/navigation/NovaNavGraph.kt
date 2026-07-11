@@ -24,7 +24,7 @@ import com.novaplay.tv.ui.gate.GateState
 import com.novaplay.tv.ui.gate.GateViewModel
 import com.novaplay.tv.ui.home.HomeScreen
 import com.novaplay.tv.ui.live.LivePlayerScreen
-import com.novaplay.tv.ui.live.LiveScreen
+import com.novaplay.tv.ui.live.ResponsiveLiveScreen
 import com.novaplay.tv.ui.movies.MovieDetailsScreen
 import com.novaplay.tv.ui.movies.MoviesScreen
 import com.novaplay.tv.ui.player.VodPlayerScreen
@@ -86,7 +86,7 @@ fun NovaNavGraph(
                 }
 
                 composable(Routes.LIVE) {
-                    LiveScreen(
+                    ResponsiveLiveScreen(
                         onPlayChannel = { channelId, categoryId ->
                             navController.navigate(Routes.livePlayer(channelId, categoryId))
                         },
