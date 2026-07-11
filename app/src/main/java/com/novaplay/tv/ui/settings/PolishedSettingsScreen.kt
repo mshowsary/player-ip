@@ -53,6 +53,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
 import com.novaplay.tv.data.prefs.SubtitleColor
@@ -60,6 +61,10 @@ import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleSize
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.prefs.UiModePreference
+import com.novaplay.tv.data.repo.DebugManagedPolicyPreset
+import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedAccessState
+import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.theme.isCompactWidth
@@ -81,6 +86,8 @@ fun PolishedSettingsScreen(
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val deviceInfo by viewModel.deviceInfo.collectAsStateWithLifecycle()
     val cacheCleared by viewModel.cacheCleared.collectAsStateWithLifecycle()
+    val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
+    val managedRefreshMessage by viewModel.managedRefreshMessage.collectAsStateWithLifecycle()
     val firstFocus = remember { FocusRequester() }
     val compact = isCompactWidth()
     val isTv = isTvDevice()
@@ -96,7 +103,7 @@ fun PolishedSettingsScreen(
     ) {
         Text(text = "Settings", style = MaterialTheme.typography.headlineMedium)
         Text(
-            text = "Playback, interface, subtitles, storage and device information",
+            text = "Playback, managed access, interface, subtitles, storage and device information",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -109,6 +116,14 @@ fun PolishedSettingsScreen(
                 modifier = Modifier.weight(1f),
             ) {
                 item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
+                item {
+                    ManagedAccessPanel(
+                        policy = managedAccess,
+                        refreshMessage = managedRefreshMessage,
+                        onRefresh = viewModel::refreshManagedAccess,
+                        onDebugPreset = viewModel::setDebugManagedPolicy,
+                    )
+                }
                 item { PlaybackPanel(liveFormat, viewModel::setLiveFormat) }
                 item {
                     MaintenancePanel(
@@ -139,6 +154,14 @@ fun PolishedSettingsScreen(
                         .fillMaxHeight(),
                 ) {
                     item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
+                    item {
+                        ManagedAccessPanel(
+                            policy = managedAccess,
+                            refreshMessage = managedRefreshMessage,
+                            onRefresh = viewModel::refreshManagedAccess,
+                            onDebugPreset = viewModel::setDebugManagedPolicy,
+                        )
+                    }
                     item { PlaybackPanel(liveFormat, viewModel::setLiveFormat) }
                     item {
                         MaintenancePanel(
@@ -201,6 +224,99 @@ private fun InterfacePanel(
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ManagedAccessPanel(
+    policy: ManagedAccessPolicy,
+    refreshMessage: String?,
+    onRefresh: () -> Unit,
+    onDebugPreset: (DebugManagedPolicyPreset) -> Unit,
+) {
+    SettingsPanel(
+        title = "Managed access",
+        description = if (policy.isManaged) {
+            "Service access assigned to this device by the provider portal."
+        } else {
+            "No managed service policy is currently attached to this installation."
+        },
+    ) {
+        Text(
+            text = policy.statusLabel(),
+            style = MaterialTheme.typography.titleMedium,
+            color = when (policy.state) {
+                ManagedAccessState.SUSPENDED, ManagedAccessState.REVOKED -> MaterialTheme.colorScheme.error
+                ManagedAccessState.ACTIVE -> MaterialTheme.colorScheme.primary
+                ManagedAccessState.UNMANAGED -> MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+        policy.message?.let { message ->
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        AccessServiceRow("Live TV", policy.allows(ManagedFeature.LIVE))
+        AccessServiceRow("Movies", policy.allows(ManagedFeature.MOVIES))
+        AccessServiceRow("Series", policy.allows(ManagedFeature.SERIES))
+        if (policy.revision > 0L) DeviceInfoRow("Policy revision", policy.revision.toString())
+        policy.supportCode?.let { DeviceInfoRow("Support code", it) }
+        NovaButton(
+            text = refreshMessage ?: "Refresh managed access",
+            onClick = onRefresh,
+            prominent = refreshMessage == null,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (BuildConfig.DEBUG) {
+            ChoiceGroup(
+                label = "Debug policy preview",
+                options = DebugManagedPolicyPreset.entries.map { it.label },
+                selectedIndex = debugPresetIndex(policy),
+                onSelect = { onDebugPreset(DebugManagedPolicyPreset.entries[it]) },
+            )
+            Text(
+                text = "Debug builds only. Release builds receive this policy from the portal.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+private fun debugPresetIndex(policy: ManagedAccessPolicy): Int = when {
+    policy.state == ManagedAccessState.UNMANAGED -> DebugManagedPolicyPreset.UNMANAGED.ordinal
+    policy.state == ManagedAccessState.SUSPENDED -> DebugManagedPolicyPreset.SUSPENDED.ordinal
+    policy.state == ManagedAccessState.REVOKED -> DebugManagedPolicyPreset.REVOKED.ordinal
+    policy.allowLive && !policy.allowMovies && !policy.allowSeries -> DebugManagedPolicyPreset.LIVE_ONLY.ordinal
+    policy.state == ManagedAccessState.ACTIVE -> DebugManagedPolicyPreset.FULL_ACCESS.ordinal
+    else -> -1
+}
+
+@Composable
+private fun AccessServiceRow(label: String, allowed: Boolean) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .size(8.dp)
+                .clip(RoundedCornerShape(50))
+                .background(
+                    if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
+                ),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = if (allowed) "Available" else "Unavailable",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (allowed) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
         )
     }
 }
@@ -403,8 +519,6 @@ private fun StableChoice(
             .background(background)
             .border(if (focused) 2.dp else 1.dp, outline, shape)
             .clickable {
-                // In forced TV mode on a touch device, focus follows the option
-                // being tapped so the old D-pad selector cannot remain elsewhere.
                 runCatching { requester.requestFocus() }
                 onClick()
             }
