@@ -37,15 +37,17 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
-import com.novaplay.tv.ui.theme.isTvDevice
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.novaplay.tv.ui.theme.isTvDevice
 
 // The app's signature focus treatment: scale + accent border + soft glow,
 // identical on every focusable surface. All interactive elements route
@@ -68,28 +70,37 @@ fun NovaClickable(
     val interactionSource = remember { MutableInteractionSource() }
     val currentOnClick by rememberUpdatedState(onClick)
     val currentOnLongClick by rememberUpdatedState(onLongClick)
+    val touchFocusRequester = remember { FocusRequester() }
+    val isTv = isTvDevice()
+
     Surface(
         onClick = onClick,
         onLongClick = onLongClick,
-        modifier = modifier.pointerInput(onLongClick != null) {
-            detectTapGestures(
-                onPress = { offset ->
-                    val press = PressInteraction.Press(offset)
-                    interactionSource.emit(press)
-                    if (tryAwaitRelease()) {
-                        interactionSource.emit(PressInteraction.Release(press))
+        modifier = modifier
+            .then(if (isTv) Modifier.focusRequester(touchFocusRequester) else Modifier)
+            .pointerInput(isTv, onLongClick != null) {
+                detectTapGestures(
+                    onPress = { offset ->
+                        // A phone can deliberately force TV mode for testing. Move
+                        // focus at finger-down so the old D-pad selection does not
+                        // remain highlighted beside the pressed item.
+                        if (isTv) runCatching { touchFocusRequester.requestFocus() }
+                        val press = PressInteraction.Press(offset)
+                        interactionSource.emit(press)
+                        if (tryAwaitRelease()) {
+                            interactionSource.emit(PressInteraction.Release(press))
+                        } else {
+                            interactionSource.emit(PressInteraction.Cancel(press))
+                        }
+                    },
+                    onTap = { currentOnClick() },
+                    onLongPress = if (onLongClick != null) {
+                        { currentOnLongClick?.invoke() }
                     } else {
-                        interactionSource.emit(PressInteraction.Cancel(press))
-                    }
-                },
-                onTap = { currentOnClick() },
-                onLongPress = if (onLongClick != null) {
-                    { currentOnLongClick?.invoke() }
-                } else {
-                    null
-                },
-            )
-        },
+                        null
+                    },
+                )
+            },
         interactionSource = interactionSource,
         shape = ClickableSurfaceDefaults.shape(shape),
         colors = ClickableSurfaceDefaults.colors(
@@ -147,20 +158,24 @@ fun NovaButton(
         focusedContainerColor = MaterialTheme.colorScheme.primary,
         focusedScale = 1.06f,
     ) {
-        FocusAwareButtonLabel(text)
+        FocusAwareButtonLabel(text = text, prominent = prominent)
     }
 }
 
 @Composable
-private fun BoxScope.FocusAwareButtonLabel(text: String) {
-    // Content color flips via LocalContentColor from the Surface colors; only
-    // the label itself is needed here.
+private fun BoxScope.FocusAwareButtonLabel(text: String, prominent: Boolean) {
+    // One-line labels keep action rows stable. Long actions should receive a
+    // full-width button rather than being squeezed into an undersized column.
     Text(
         text = text,
-        style = MaterialTheme.typography.titleMedium,
+        style = if (prominent) MaterialTheme.typography.titleSmall else MaterialTheme.typography.labelLarge,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Ellipsis,
+        textAlign = TextAlign.Center,
         modifier = Modifier
             .align(Alignment.Center)
-            .padding(horizontal = 24.dp, vertical = 12.dp),
+            .padding(horizontal = if (prominent) 18.dp else 12.dp, vertical = 12.dp),
     )
 }
 
@@ -255,33 +270,43 @@ fun EmptyState(message: String, modifier: Modifier = Modifier) {
 }
 
 // Modal panel shared by TV (focusable items) and touch (tappable items,
-// outside-tap dismisses). Sized down on narrow phone screens.
+// outside-tap dismisses). Narrow phones use small margins; landscape and TV
+// can opt into a wider professional form without stretching simple dialogs.
 @Composable
 fun NovaDialog(
     title: String,
     onDismiss: () -> Unit,
+    maxWidth: Dp = 420.dp,
     content: @Composable () -> Unit,
 ) {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
+    val compact = screenWidth < 460.dp
+    val wideAvailable = screenWidth - 48.dp
+    val dialogWidth = when {
+        compact -> screenWidth - 24.dp
+        maxWidth < wideAvailable -> maxWidth
+        else -> wideAvailable
+    }
+    val panelPadding = if (compact) 22.dp else 28.dp
+
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             shape = MaterialTheme.shapes.large,
             colors = androidx.tv.material3.SurfaceDefaults.colors(
-                // Slightly translucent panel with a glass edge over the dim.
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
                 contentColor = MaterialTheme.colorScheme.onSurface,
             ),
             border = Border(
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
                 shape = MaterialTheme.shapes.large,
             ),
-            modifier = Modifier.width(if (screenWidth < 460.dp) screenWidth - 40.dp else 420.dp),
+            modifier = Modifier.width(dialogWidth),
         ) {
-            Column(modifier = Modifier.padding(28.dp)) {
+            Column(modifier = Modifier.padding(panelPadding)) {
                 Text(
                     text = title,
                     style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 20.dp),
+                    modifier = Modifier.padding(bottom = 18.dp),
                 )
                 content()
             }

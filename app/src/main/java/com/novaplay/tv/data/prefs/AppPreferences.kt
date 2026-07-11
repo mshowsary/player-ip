@@ -19,7 +19,7 @@ enum class UiModePreference(val label: String) {
 }
 
 enum class LiveFormat(val label: String) {
-    AUTO("Auto (HLS → TS fallback)"),
+    AUTO("Auto"),
     HLS("HLS"),
     TS("MPEG-TS"),
 }
