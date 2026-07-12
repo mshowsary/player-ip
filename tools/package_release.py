@@ -143,9 +143,11 @@ def package_release(
     aab_dir: Path,
     output_dir: Path,
     commit: str | None,
+    build_commit: str | None = None,
 ) -> dict[str, object]:
     metadata = parse_metadata(read_properties(metadata_path))
-    resolved_commit = resolve_commit(commit)
+    source_commit = resolve_commit(commit)
+    tested_build_commit = resolve_commit(build_commit) if build_commit else source_commit
     apk_source = find_single_artifact(apk_dir, ".apk")
     aab_source = find_single_artifact(aab_dir, ".aab")
 
@@ -154,7 +156,7 @@ def package_release(
     output_dir.mkdir(parents=True, exist_ok=False)
 
     version_part = _safe_filename_part(metadata.version_name)
-    commit_part = resolved_commit[:12] if resolved_commit != "unknown" else "unknown"
+    commit_part = source_commit[:12] if source_commit != "unknown" else "unknown"
     signature_part = "signed" if metadata.signing_configured else "unsigned"
     base_name = f"novaplay-{version_part}-{metadata.version_code}-{commit_part}-{signature_part}"
 
@@ -186,7 +188,10 @@ def package_release(
         "application_id": metadata.application_id,
         "version_code": metadata.version_code,
         "version_name": metadata.version_name,
-        "commit": resolved_commit,
+        # commit is the exact branch/source commit collaborators approve. A PR
+        # workflow may compile GitHub's synthetic merge commit, recorded separately.
+        "commit": source_commit,
+        "build_commit": tested_build_commit,
         "build_channel": metadata.build_channel,
         "portal_configured": metadata.portal_configured,
         "signing_configured": metadata.signing_configured,
@@ -225,7 +230,16 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("dist/release-candidate"),
     )
-    parser.add_argument("--commit", default=None)
+    parser.add_argument(
+        "--commit",
+        default=None,
+        help="Exact source/head commit being approved; defaults to local HEAD.",
+    )
+    parser.add_argument(
+        "--build-commit",
+        default=None,
+        help="Optional CI merge/test commit when it differs from the source commit.",
+    )
     return parser
 
 
@@ -237,6 +251,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         aab_dir=args.aab_dir,
         output_dir=args.output,
         commit=args.commit,
+        build_commit=args.build_commit,
     )
     print(
         f"Packaged NovaPlay {manifest['version_name']} "
