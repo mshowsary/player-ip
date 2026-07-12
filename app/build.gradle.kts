@@ -1,3 +1,4 @@
+import java.net.URI
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -12,12 +13,38 @@ plugins {
 fun String.asBuildConfigString(): String =
     "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 
+fun isReservedPortalHost(rawHost: String): Boolean {
+    val host = rawHost.lowercase().trimEnd('.')
+    return host == "localhost" ||
+        host == "example.com" || host.endsWith(".example.com") ||
+        host == "example.net" || host.endsWith(".example.net") ||
+        host == "example.org" || host.endsWith(".example.org") ||
+        host == "invalid" || host.endsWith(".invalid") ||
+        host == "test" || host.endsWith(".test") ||
+        host == "example" || host.endsWith(".example")
+}
+
 val configuredPortalBaseUrl = providers.gradleProperty("novaplayPortalBaseUrl")
     .orElse(providers.environmentVariable("NOVAPLAY_PORTAL_BASE_URL"))
     .orElse("https://portal.example.com")
     .get()
-val portalConfigured = !configuredPortalBaseUrl.contains("portal.example.com", ignoreCase = true) &&
-    !configuredPortalBaseUrl.contains("example.invalid", ignoreCase = true)
+val configuredPortalUri = runCatching { URI(configuredPortalBaseUrl.trim()) }.getOrNull()
+val configuredPortalHost = configuredPortalUri?.host?.lowercase().orEmpty()
+val configuredPortalScheme = configuredPortalUri?.scheme?.lowercase().orEmpty()
+val portalAddressHasSafeShape = configuredPortalUri != null &&
+    configuredPortalHost.isNotBlank() &&
+    configuredPortalUri.userInfo == null &&
+    configuredPortalUri.query == null &&
+    configuredPortalUri.fragment == null
+val localDebugPortal = configuredPortalScheme == "http" &&
+    configuredPortalHost in setOf("localhost", "127.0.0.1", "10.0.2.2", "::1")
+val portalConfigured = portalAddressHasSafeShape &&
+    ((configuredPortalScheme == "https" && !isReservedPortalHost(configuredPortalHost)) || localDebugPortal)
+// Release metadata is stricter than debug configuration: only a non-reserved
+// HTTPS authority can satisfy the managed-provider publication gate.
+val releasePortalConfigured = portalAddressHasSafeShape &&
+    configuredPortalScheme == "https" &&
+    !isReservedPortalHost(configuredPortalHost)
 
 // A protected release environment can override the repository defaults without
 // changing source files. Environment variables intentionally take precedence.
@@ -149,7 +176,7 @@ tasks.register("writeReleaseMetadata") {
     inputs.property("applicationId", "com.novaplay.tv")
     inputs.property("versionCode", appVersionCode)
     inputs.property("versionName", appVersionName)
-    inputs.property("portalConfigured", portalConfigured)
+    inputs.property("portalConfigured", releasePortalConfigured)
     inputs.property("signingConfigured", signingConfigured)
     outputs.file(releaseMetadataFile)
 
@@ -162,7 +189,7 @@ tasks.register("writeReleaseMetadata") {
                 appendLine("versionCode=$appVersionCode")
                 appendLine("versionName=$appVersionName")
                 appendLine("buildChannel=production")
-                appendLine("portalConfigured=$portalConfigured")
+                appendLine("portalConfigured=$releasePortalConfigured")
                 appendLine("signingConfigured=$signingConfigured")
             },
         )
