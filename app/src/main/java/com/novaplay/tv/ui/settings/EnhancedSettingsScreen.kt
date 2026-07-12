@@ -17,9 +17,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.theme.isTvDevice
@@ -41,7 +43,7 @@ fun EnhancedSettingsScreen(
             PolishedSettingsScreen(viewModel = viewModel)
         }
         NovaButton(
-            text = "Synchronization & device health",
+            text = stringResource(R.string.settings_sync_health_action),
             onClick = { showPerformance = true },
             prominent = true,
             modifier = Modifier
@@ -87,7 +89,7 @@ private fun PerformanceSettingsDialog(
     }
 
     NovaDialog(
-        title = "Synchronization and device health",
+        title = stringResource(R.string.settings_sync_health_title),
         onDismiss = onDismiss,
         maxWidth = 720.dp,
     ) {
