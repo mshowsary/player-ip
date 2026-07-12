@@ -121,10 +121,8 @@ class ReleaseReadinessTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             subprocess.run(["git", "init", "-q", str(root)], check=True)
-            (root / "secret.txt").write_text(
-                "-----BEGIN PRIVATE KEY-----\nplaceholder\n-----END PRIVATE KEY-----\n",
-                encoding="utf-8",
-            )
+            private_key_fixture = "-----BEGIN " + "PRIVATE KEY-----\nplaceholder\n-----END PRIVATE KEY-----\n"
+            (root / "secret.txt").write_text(private_key_fixture, encoding="utf-8")
             subprocess.run(["git", "-C", str(root), "add", "secret.txt"], check=True)
 
             with self.assertRaisesRegex(release_readiness.ReadinessError, "private_key"):
