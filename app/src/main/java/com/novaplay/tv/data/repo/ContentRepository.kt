@@ -11,6 +11,7 @@ import com.novaplay.tv.data.db.NovaDatabase
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.db.RecentView
 import com.novaplay.tv.data.db.Series
+import com.novaplay.tv.data.db.EpgProgramme
 import com.novaplay.tv.data.db.WatchProgress
 import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.epg.EpgNowNextPolicy
@@ -126,6 +127,19 @@ class ContentRepository @Inject constructor(
         val key = channel.epgChannelId ?: return flowOf(EpgNowNext.EMPTY)
         return db.epgDao().observeUpcoming(channel.playlistId, key, nowMs)
             .map { upcoming -> EpgNowNextPolicy.fromUpcoming(upcoming, nowMs) }
+    }
+
+    /**
+     * One channel's programmes inside the grid-guide window, start-ordered.
+     * Channels without a guide key get a constant empty flow.
+     */
+    fun guideProgrammes(
+        channel: LiveChannel,
+        windowStartMs: Long,
+        windowEndMs: Long,
+    ): Flow<List<EpgProgramme>> {
+        val key = channel.epgChannelId ?: return flowOf(emptyList())
+        return db.epgDao().observeRange(channel.playlistId, key, windowStartMs, windowEndMs)
     }
 
     // ---- Movies ----

@@ -404,6 +404,22 @@ interface EpgDao {
     )
     fun observeUpcoming(playlistId: Long, epgChannelId: String, nowMs: Long): Flow<List<EpgProgramme>>
 
+    // One channel's programmes overlapping [windowStartMs, windowEndMs), in start
+    // order — feeds a grid-guide lane through the (playlistId, epgChannelId,
+    // startMs) index.
+    @Query(
+        """SELECT * FROM epg_programmes
+           WHERE playlistId = :playlistId AND epgChannelId = :epgChannelId
+             AND endMs > :windowStartMs AND startMs < :windowEndMs
+           ORDER BY startMs""",
+    )
+    fun observeRange(
+        playlistId: Long,
+        epgChannelId: String,
+        windowStartMs: Long,
+        windowEndMs: Long,
+    ): Flow<List<EpgProgramme>>
+
     // Blocking bulk insert: guide installs stream SAX-parser batches inside one
     // transaction, and SAX callbacks cannot suspend.
     @Insert
