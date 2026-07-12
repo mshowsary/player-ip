@@ -46,9 +46,13 @@ jobs:
 
       - name: Package release candidate with checksums
         if: success()
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          BUILD_COMMIT: ${{ github.sha }}
         run: |
           python3 tools/package_release.py \
-            --commit "${GITHUB_SHA}" \
+            --commit "${SOURCE_COMMIT}" \
+            --build-commit "${BUILD_COMMIT}" \
             --output dist/release-candidate
 
       - name: Upload build log
