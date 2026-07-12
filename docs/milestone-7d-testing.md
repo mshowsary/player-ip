@@ -2,6 +2,10 @@
 
 This milestone is the final shared touch, keyboard, accessibility and TV/remote interaction pass before release-candidate work. It does not add provider features or a production portal backend.
 
+## Physical smoke status
+
+The install-over-existing build launched and normal application use continued without a crash on the user's Android device. Focused TalkBack, category focus restoration, health-dialog focus restoration and collaborator approval remain separate acceptance checks before this milestone can be merged.
+
 ## Branch position
 
 ```text
