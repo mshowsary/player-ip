@@ -14,9 +14,9 @@ import hashlib
 import json
 import re
 import subprocess
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Iterable, Mapping
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 GIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{7,40}$")
@@ -178,6 +178,20 @@ def parse_checksums(path: Path) -> dict[str, str]:
     return checksums
 
 
+def _sensitive_keys(value: object) -> set[str]:
+    found: set[str] = set()
+    if isinstance(value, Mapping):
+        for key, child in value.items():
+            normalized = str(key).lower()
+            if normalized in SENSITIVE_MANIFEST_KEYS:
+                found.add(normalized)
+            found.update(_sensitive_keys(child))
+    elif isinstance(value, list):
+        for child in value:
+            found.update(_sensitive_keys(child))
+    return found
+
+
 def _validate_manifest_shape(manifest: Mapping[str, object]) -> None:
     required = {
         "schema_version",
@@ -211,8 +225,7 @@ def _validate_manifest_shape(manifest: Mapping[str, object]) -> None:
     if manifest["build_channel"] != "production":
         raise ReadinessError("Release manifest build_channel must be production")
 
-    lowered_keys = {str(key).lower() for key in manifest}
-    leaked = sorted(lowered_keys & SENSITIVE_MANIFEST_KEYS)
+    leaked = sorted(_sensitive_keys(manifest))
     if leaked:
         raise ReadinessError("Release manifest contains sensitive fields: " + ", ".join(leaked))
 
@@ -232,12 +245,16 @@ def validate_release_package(
     if not EXPECTED_PACKAGE_SUPPORT_FILES.issubset(names):
         raise ReadinessError("Release package is missing manifest or checksum file")
 
-    manifest = json.loads((package_dir / "release-manifest.json").read_text(encoding="utf-8"))
+    try:
+        manifest = json.loads((package_dir / "release-manifest.json").read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ReadinessError("Release manifest is unreadable or invalid JSON") from error
     if not isinstance(manifest, dict):
         raise ReadinessError("Release manifest root must be an object")
     _validate_manifest_shape(manifest)
 
-    if expected_commit is not None and manifest["commit"] != expected_commit.lower():
+    normalized_expected = expected_commit.lower() if expected_commit is not None else None
+    if normalized_expected is not None and manifest["commit"] != normalized_expected:
         raise ReadinessError("Release package source commit does not match the tested branch commit")
     if require_signed and not manifest["signing_configured"]:
         raise ReadinessError("A distributable release must be externally signed")
@@ -265,11 +282,10 @@ def validate_release_package(
             raise ReadinessError("Release manifest artifact kinds must be one APK and one AAB")
         if not isinstance(filename, str) or Path(filename).name != filename:
             raise ReadinessError("Release manifest artifact filename is invalid")
-        expected_suffix = f".{kind}"
-        if not filename.endswith(expected_suffix):
-            raise ReadinessError("Release manifest artifact extension does not match its kind")
-        if source_prefix not in filename or signature_marker not in filename:
-            raise ReadinessError("Release artifact filename is not traceable to source/signing state")
+        if not filename.endswith(f"-{signature_marker}.{kind}"):
+            raise ReadinessError("Release artifact filename does not match signing state")
+        if source_prefix not in filename:
+            raise ReadinessError("Release artifact filename is not traceable to the source commit")
         if not isinstance(digest, str) or not SHA256_PATTERN.fullmatch(digest.lower()):
             raise ReadinessError("Release manifest artifact hash is invalid")
         if not isinstance(size_bytes, int) or size_bytes <= 0:
