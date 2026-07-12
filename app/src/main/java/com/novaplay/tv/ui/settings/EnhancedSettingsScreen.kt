@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -37,6 +38,18 @@ fun EnhancedSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     var showPerformance by remember { mutableStateOf(false) }
+    var restoreHealthFocus by remember { mutableStateOf(false) }
+    val healthActionFocus = remember { FocusRequester() }
+    val isTv = isTvDevice()
+
+    // Dialogs use their own focus scope. Returning focus to the exact opener
+    // prevents a remote or keyboard user from being stranded after dismissal.
+    LaunchedEffect(showPerformance, isTv, restoreHealthFocus) {
+        if (!showPerformance && isTv && restoreHealthFocus) {
+            runCatching { healthActionFocus.requestFocus() }
+            restoreHealthFocus = false
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         Box(modifier = Modifier.weight(1f)) {
@@ -44,11 +57,15 @@ fun EnhancedSettingsScreen(
         }
         NovaButton(
             text = stringResource(R.string.settings_sync_health_action),
-            onClick = { showPerformance = true },
+            onClick = {
+                restoreHealthFocus = true
+                showPerformance = true
+            },
             prominent = true,
             modifier = Modifier
                 .padding(screenPadding())
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .focusRequester(healthActionFocus),
         )
     }
 
