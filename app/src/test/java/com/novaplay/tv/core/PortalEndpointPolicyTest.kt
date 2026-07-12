@@ -8,23 +8,33 @@ class PortalEndpointPolicyTest {
 
     @Test
     fun configuredHttpsPortalIsAllowed() {
-        val result = PortalEndpointPolicy.assess("https://portal.provider.test", debug = false)
+        val result = PortalEndpointPolicy.assess("https://portal.provider.net", debug = false)
 
         assertTrue(result.transportAllowed)
         assertTrue(result.configured)
     }
 
     @Test
-    fun placeholderPortalIsSafeButNotConfigured() {
-        val result = PortalEndpointPolicy.assess("https://portal.example.com", debug = false)
+    fun documentationAndReservedHostsAreSafeButNotConfigured() {
+        val candidates = listOf(
+            "https://portal.example.com",
+            "https://portal.example.net",
+            "https://portal.example.org",
+            "https://portal.ci.invalid",
+            "https://portal.provider.test",
+            "https://portal.provider.example",
+        )
 
-        assertTrue(result.transportAllowed)
-        assertFalse(result.configured)
+        candidates.forEach { address ->
+            val result = PortalEndpointPolicy.assess(address, debug = false)
+            assertTrue(address, result.transportAllowed)
+            assertFalse(address, result.configured)
+        }
     }
 
     @Test
     fun productionHttpPortalIsBlocked() {
-        val result = PortalEndpointPolicy.assess("http://portal.provider.test", debug = false)
+        val result = PortalEndpointPolicy.assess("http://portal.provider.net", debug = false)
 
         assertFalse(result.transportAllowed)
         assertFalse(result.configured)
@@ -44,19 +54,19 @@ class PortalEndpointPolicyTest {
     fun credentialsQueriesAndFragmentsAreRejected() {
         assertFalse(
             PortalEndpointPolicy.assess(
-                "https://user:secret@portal.provider.test",
+                "https://user:secret@portal.provider.net",
                 debug = false,
             ).transportAllowed,
         )
         assertFalse(
             PortalEndpointPolicy.assess(
-                "https://portal.provider.test?token=value",
+                "https://portal.provider.net?token=value",
                 debug = false,
             ).transportAllowed,
         )
         assertFalse(
             PortalEndpointPolicy.assess(
-                "https://portal.provider.test#fragment",
+                "https://portal.provider.net#fragment",
                 debug = false,
             ).transportAllowed,
         )
