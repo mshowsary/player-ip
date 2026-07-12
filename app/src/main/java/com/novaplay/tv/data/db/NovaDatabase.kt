@@ -22,11 +22,12 @@ import androidx.room.RoomDatabase
         WatchProgress::class,
         Bookmark::class,
         RecentView::class,
+        EpgProgramme::class,
         LiveChannelFts::class,
         MovieFts::class,
         SeriesFts::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 abstract class NovaDatabase : RoomDatabase() {
@@ -46,4 +47,6 @@ abstract class NovaDatabase : RoomDatabase() {
     abstract fun bookmarkDao(): BookmarkDao
     /** "Recently viewed" history rows. */
     abstract fun recentViewDao(): RecentViewDao
+    /** Guide programmes: windowed now/next lookups and per-playlist replacement. */
+    abstract fun epgDao(): EpgDao
 }

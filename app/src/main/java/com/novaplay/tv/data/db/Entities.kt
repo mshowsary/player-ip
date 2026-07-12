@@ -26,6 +26,10 @@ data class Playlist(
     val username: String? = null,
     val password: String? = null,
     val url: String? = null,
+    // XMLTV guide source discovered from the M3U header (url-tvg). Sealed like the
+    // other credential fields because guide URLs can embed provider tokens.
+    // Xtream playlists build their xmltv.php URL at runtime and leave this null.
+    val epgUrl: String? = null,
     val isActive: Boolean = false,
     val expiryEpochSec: Long? = null,
     val maxConnections: Int? = null,
@@ -128,6 +132,9 @@ data class LiveChannel(
     val logoUrl: String? = null,
     // Direct URL for M3U playlists; Xtream channels build URLs from credentials.
     val urlOverride: String? = null,
+    // Normalized guide key (EpgChannelKey.normalize of epg_channel_id / tvg-id);
+    // null when the provider gives no guide mapping for this channel.
+    val epgChannelId: String? = null,
 )
 
 // Browse paths are (playlistId, categoryId, name) and (playlistId, name), both indexed
@@ -263,6 +270,35 @@ data class RecentView(
     val mediaType: String,
     val remoteId: Long,
     val viewedAt: Long,
+)
+
+// Guide programmes, wiped and re-installed per playlist on every EPG refresh and
+// pruned by the retention window. epgChannelId is the normalized guide key shared
+// with live_channels; the (playlistId, epgChannelId, startMs) index serves the
+// windowed now/next and future grid range queries, (playlistId, endMs) the pruning.
+@Entity(
+    tableName = "epg_programmes",
+    indices = [
+        Index(value = ["playlistId", "epgChannelId", "startMs"]),
+        Index(value = ["playlistId", "endMs"]),
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = Playlist::class,
+            parentColumns = ["id"],
+            childColumns = ["playlistId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+)
+data class EpgProgramme(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val playlistId: Long,
+    val epgChannelId: String,
+    val startMs: Long,
+    val endMs: Long,
+    val title: String,
+    val description: String? = null,
 )
 
 // External-content FTS4: names are indexed, not stored twice. unicode61 gives
