@@ -25,7 +25,7 @@ class ReleasePackageTest(unittest.TestCase):
                 }
             )
 
-    def test_package_is_deterministic_and_privacy_safe(self) -> None:
+    def test_package_is_deterministic_traceable_and_privacy_safe(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             metadata = root / "release-metadata.properties"
@@ -52,21 +52,24 @@ class ReleasePackageTest(unittest.TestCase):
 
             first_output = root / "first"
             second_output = root / "second"
-            commit = "0123456789abcdef0123456789abcdef01234567"
+            source_commit = "0123456789abcdef0123456789abcdef01234567"
+            build_commit = "89abcdef0123456789abcdef0123456789abcdef"
 
             first_manifest = package_release.package_release(
                 metadata_path=metadata,
                 apk_dir=apk_dir,
                 aab_dir=aab_dir,
                 output_dir=first_output,
-                commit=commit,
+                commit=source_commit,
+                build_commit=build_commit,
             )
             second_manifest = package_release.package_release(
                 metadata_path=metadata,
                 apk_dir=apk_dir,
                 aab_dir=aab_dir,
                 output_dir=second_output,
-                commit=commit,
+                commit=source_commit,
+                build_commit=build_commit,
             )
 
             self.assertEqual(first_manifest, second_manifest)
@@ -84,9 +87,14 @@ class ReleasePackageTest(unittest.TestCase):
             )
             self.assertEqual("1.0.0-rc.1", parsed["version_name"])
             self.assertEqual(1000001, parsed["version_code"])
+            self.assertEqual(source_commit, parsed["commit"])
+            self.assertEqual(build_commit, parsed["build_commit"])
             self.assertFalse(parsed["portal_configured"])
             self.assertFalse(parsed["signing_configured"])
             self.assertEqual(2, len(parsed["artifacts"]))
+            for artifact in parsed["artifacts"]:
+                self.assertIn(source_commit[:12], artifact["filename"])
+                self.assertNotIn(build_commit[:12], artifact["filename"])
 
             combined_text = "\n".join(
                 path.read_text(encoding="utf-8")
