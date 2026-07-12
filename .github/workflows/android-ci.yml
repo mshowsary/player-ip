@@ -32,7 +32,7 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Test release packaging tool
+      - name: Test release tools
         run: python3 -m unittest discover -s tools -p 'test_*.py'
 
       - name: Verify complete release candidate
@@ -54,6 +54,17 @@ jobs:
             --commit "${SOURCE_COMMIT}" \
             --build-commit "${BUILD_COMMIT}" \
             --output dist/release-candidate
+
+      - name: Verify repository and release-package readiness
+        if: success()
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 tools/release_readiness.py \
+            --repository . \
+            --package-dir dist/release-candidate \
+            --expected-commit "${SOURCE_COMMIT}" \
+            --report dist/release-readiness/release-readiness.json
 
       - name: Upload build log
         if: always()
@@ -88,6 +99,15 @@ jobs:
         with:
           name: novaplay-release-candidate
           path: dist/release-candidate/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload release readiness report
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaplay-release-readiness
+          path: dist/release-readiness/release-readiness.json
           if-no-files-found: error
           retention-days: 30
 
