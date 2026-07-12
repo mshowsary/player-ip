@@ -4,6 +4,10 @@ This milestone adds Android-declared support for English, French and Arabic, loc
 
 It does not claim a complete translation of every legacy catalogue, playlist, player or detailed Settings label. Provider-supplied playlist names, category names, content titles, policy messages and support references are displayed exactly as supplied by the provider.
 
+## Physical smoke status
+
+The install-over-existing build launched and normal application use continued without a crash on the user's Android device. Focused French, Arabic/RTL, TalkBack and collaborator approval remain separate acceptance checks before this milestone can be merged.
+
 ## Branch position
 
 ```text
