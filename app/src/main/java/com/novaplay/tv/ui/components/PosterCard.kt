@@ -21,13 +21,19 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.novaplay.tv.R
 import com.novaplay.tv.ui.theme.isTvDevice
 
 // 2:3 poster card with a bottom scrim for the title. Image decodes at cell
@@ -43,15 +49,30 @@ fun PosterCard(
     bookmarked: Boolean = false,
     onToggleBookmark: (() -> Unit)? = null,
 ) {
+    val cardLabel = buildString {
+        append(title)
+        subtitle?.takeIf { it.isNotBlank() }?.let {
+            append(", ")
+            append(it)
+        }
+    }
+    val bookmarkState = if (onToggleBookmark != null) {
+        stringResource(if (bookmarked) R.string.state_bookmarked else R.string.state_not_bookmarked)
+    } else {
+        null
+    }
+
     NovaClickable(
         onClick = onClick,
         onLongClick = onToggleBookmark,
         modifier = modifier.aspectRatio(2f / 3f),
         focusedScale = 1.07f,
+        accessibilityLabel = cardLabel,
+        accessibilityStateDescription = bookmarkState,
     ) {
         AsyncImage(
             model = posterUrl,
-            contentDescription = title,
+            contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
@@ -96,7 +117,8 @@ fun PosterCard(
 
 // 48 dp corner badge that toggles the bookmark. Deliberately kept out of the
 // TV focus chain (raw tap handler, no focusable) so D-pad traversal skips it;
-// remotes long-press the card instead.
+// remotes long-press the card instead. Accessibility services still receive a
+// named click action even in forced TV mode.
 @Composable
 private fun PosterBookmarkButton(
     bookmarked: Boolean,
@@ -104,14 +126,24 @@ private fun PosterBookmarkButton(
     modifier: Modifier = Modifier,
 ) {
     val isTv = isTvDevice()
+    val actionLabel = stringResource(
+        if (bookmarked) R.string.action_remove_bookmark else R.string.action_add_bookmark,
+    )
     val interactionModifier = if (isTv) {
-        // Keep the corner badge out of the TV focus chain; long-pressing the
-        // poster remains the primary remote interaction.
-        Modifier.pointerInput(Unit) { detectTapGestures { onToggle() } }
+        Modifier
+            .pointerInput(Unit) { detectTapGestures { onToggle() } }
+            .semantics {
+                role = Role.Button
+                contentDescription = actionLabel
+                onClick(actionLabel) {
+                    onToggle()
+                    true
+                }
+            }
     } else {
         Modifier.clickable(
             role = Role.Button,
-            onClickLabel = if (bookmarked) "Remove bookmark" else "Add bookmark",
+            onClickLabel = actionLabel,
             onClick = onToggle,
         )
     }
@@ -131,7 +163,7 @@ private fun PosterBookmarkButton(
         ) {
             Icon(
                 imageVector = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                contentDescription = if (bookmarked) "Remove bookmark" else "Add bookmark",
+                contentDescription = null,
                 tint = if (bookmarked) MaterialTheme.colorScheme.primary else Color.White,
                 modifier = Modifier.size(20.dp),
             )
