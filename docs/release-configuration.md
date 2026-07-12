@@ -1,5 +1,25 @@
 # NovaPlay release configuration
 
+## Release version
+
+Repository defaults are stored in `gradle.properties`:
+
+```properties
+novaplayVersionCode=1000001
+novaplayVersionName=1.0.0-rc.1
+```
+
+`versionCode` must be a positive Android version code and must increase for every distributed build. `versionName` must use a semantic form such as `1.0.0` or `1.0.0-rc.1`.
+
+A protected build environment may override the defaults without changing source files:
+
+```powershell
+$env:NOVAPLAY_VERSION_CODE = "1000002"
+$env:NOVAPLAY_VERSION_NAME = "1.0.0-rc.2"
+```
+
+Environment values take precedence over the repository defaults. CI and the packaging manifest use the same Gradle-resolved values, preventing an APK label from disagreeing with its checksum package.
+
 ## Provider portal URL
 
 The production control-plane URL is supplied at build time. It must be an HTTPS origin and must not contain embedded credentials, query parameters, or a fragment.
@@ -7,14 +27,14 @@ The production control-plane URL is supplied at build time. It must be an HTTPS 
 Use either a Gradle property:
 
 ```powershell
-.\gradlew.bat :app:assembleRelease -PnovaplayPortalBaseUrl=https://portal.your-domain.example
+.\gradlew.bat :app:verifyReleaseCandidate -PnovaplayPortalBaseUrl=https://portal.your-domain.example
 ```
 
 or an environment variable:
 
 ```powershell
 $env:NOVAPLAY_PORTAL_BASE_URL = "https://portal.your-domain.example"
-.\gradlew.bat :app:assembleRelease
+.\gradlew.bat :app:verifyReleaseCandidate
 ```
 
 When no real portal URL is supplied, the app still builds and personal Xtream/M3U mode remains available, but managed pairing reports that the provider portal is not configured.
@@ -31,22 +51,82 @@ Mock activation code and development assignments exist only in the debug source 
 
 Provider credentials must never be committed as production configuration. Use personal playlist entry for local testing or connect a protected development portal.
 
-## Signing
+## External signing
 
-The generated release APK is unsigned until a private signing configuration is supplied outside the repository. Signing keys, aliases, and passwords must remain in a secure secret manager or protected local environment and must not be committed.
+The repository contains no signing key or password. An unsigned release is produced when no signing environment is present.
+
+To produce a signed APK and AAB, supply all four variables from a protected local environment or secret manager:
+
+```powershell
+$env:NOVAPLAY_SIGNING_STORE_FILE = "C:\secure\novaplay-release.jks"
+$env:NOVAPLAY_SIGNING_STORE_PASSWORD = "<secret>"
+$env:NOVAPLAY_SIGNING_KEY_ALIAS = "novaplay"
+$env:NOVAPLAY_SIGNING_KEY_PASSWORD = "<secret>"
+```
+
+Then run:
+
+```powershell
+.\gradlew.bat :app:verifyReleaseCandidate
+python tools\package_release.py --output dist\release-candidate
+```
+
+The Gradle configuration fails immediately when only some signing variables are present or the keystore file does not exist. Signing keys, aliases, passwords and keystore files must remain outside the repository. `*.jks`, `*.keystore`, `keystore.properties`, APK/AAB output and `dist/` are ignored by Git.
+
+The packaging manifest contains only `signing_configured: true/false`. It never includes key paths, aliases or passwords.
+
+## Release-candidate verification
+
+Run the complete local verification with one command:
+
+```powershell
+.\gradlew.bat :app:verifyReleaseCandidate
+```
+
+That task runs:
+
+- Debug and release unit tests
+- Debug and minified release compilation
+- Debug and release lint
+- Debug APK generation
+- Release APK generation
+- Release Android App Bundle generation
+- Privacy-safe release metadata generation
+
+After it succeeds, build the package:
+
+```powershell
+python tools\package_release.py --output dist\release-candidate
+```
+
+The clean output directory contains:
+
+- A versioned APK
+- A versioned AAB
+- `release-manifest.json`
+- `SHA256SUMS`
+
+The manifest records the application ID, version, Git commit, build channel, portal-configured boolean, signing-configured boolean, artifact sizes and SHA-256 hashes. It contains no portal hostname, credentials, device identifiers or playlist data. No timestamp is included, so packaging the same artifact bytes and commit produces the same manifest and checksum file.
+
+The packager deliberately fails when it finds zero or multiple APKs/AABs. This prevents accidentally distributing the wrong variant.
 
 ## Backup and transfer
 
-Application backup is disabled. Explicit Android backup and device-transfer rules also exclude databases, preferences, files, encrypted tokens, playlist details, viewing history, and temporary data.
+Application backup is disabled. Explicit Android backup and device-transfer rules also exclude databases, preferences, files, encrypted tokens, playlist details, viewing history and temporary data.
 
 ## CI release verification
 
-Pull requests build and test both variants:
+Pull requests run the packaging-tool unit tests and the complete release-candidate Gradle task. Successful CI uploads:
 
-- Debug unit tests, compilation, and lint
-- Release unit tests, minified compilation, and lint
-- Debug APK artifact
-- Unsigned release APK artifact
-- Room schema artifact
+- Build log
+- Debug APK
+- Raw unsigned release APK
+- Versioned release-candidate APK and AAB
+- Release manifest and SHA-256 checksums
+- Private R8 mapping file
+- Lint reports
+- Room schemas
 
-A successful unsigned release build verifies source-set separation, R8 rules, resource shrinking, release-only compilation, and production manifest merging. It is not a distributable signed release.
+The CI release candidate remains unsigned because no private signing secrets are provided. A successful unsigned build verifies source-set separation, R8 rules, resource shrinking, release-only compilation, bundle generation and production manifest merging. It is not a distributable signed release.
+
+The R8 mapping file is an internal support artifact. Keep it private and retain it for every distributed version so future crash traces can be de-obfuscated.
