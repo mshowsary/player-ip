@@ -1,5 +1,6 @@
 package com.novaplay.tv.ui.navigation
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,10 +24,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.novaplay.tv.R
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.ui.components.NovaClickable
@@ -37,17 +40,17 @@ import com.novaplay.tv.ui.theme.isTvDevice
 /** A top-level shell entry; [managedFeature] ties it to the access policy (null = always visible). */
 private data class ShellDestination(
     val route: String,
-    val label: String,
+    @StringRes val labelRes: Int,
     val icon: ImageVector,
     val managedFeature: ManagedFeature? = null,
 )
 
 private val topLevelDestinations = listOf(
-    ShellDestination(Routes.HOME, "Home", Icons.Default.Home),
-    ShellDestination(Routes.LIVE, "Live", Icons.Default.LiveTv, ManagedFeature.LIVE),
-    ShellDestination(Routes.MOVIES, "Movies", Icons.Default.Movie, ManagedFeature.MOVIES),
-    ShellDestination(Routes.SERIES, "Series", Icons.Default.VideoLibrary, ManagedFeature.SERIES),
-    ShellDestination(Routes.SETTINGS, "Settings", Icons.Default.Settings),
+    ShellDestination(Routes.HOME, R.string.nav_home, Icons.Default.Home),
+    ShellDestination(Routes.LIVE, R.string.nav_live, Icons.Default.LiveTv, ManagedFeature.LIVE),
+    ShellDestination(Routes.MOVIES, R.string.nav_movies, Icons.Default.Movie, ManagedFeature.MOVIES),
+    ShellDestination(Routes.SERIES, R.string.nav_series, Icons.Default.VideoLibrary, ManagedFeature.SERIES),
+    ShellDestination(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings),
 )
 
 /** True when the route is a top-level shell destination — only those get nav chrome on touch. */
@@ -176,6 +179,7 @@ private fun ShellButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val label = stringResource(destination.labelRes)
     NovaClickable(
         onClick = onClick,
         modifier = modifier.height(if (compact) 58.dp else 56.dp),
@@ -194,12 +198,12 @@ private fun ShellButton(
             ) {
                 Icon(
                     imageVector = destination.icon,
-                    contentDescription = destination.label,
+                    contentDescription = label,
                     tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(22.dp),
                 )
                 Text(
-                    text = destination.label,
+                    text = label,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -211,14 +215,14 @@ private fun ShellButton(
             ) {
                 Icon(
                     imageVector = destination.icon,
-                    contentDescription = destination.label,
+                    contentDescription = label,
                     tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(25.dp),
                 )
                 if (showLabel) {
                     Spacer(Modifier.width(14.dp))
                     Text(
-                        text = destination.label,
+                        text = label,
                         style = MaterialTheme.typography.titleSmall,
                         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
