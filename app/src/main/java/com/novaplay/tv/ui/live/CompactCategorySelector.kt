@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,7 +31,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,6 +47,7 @@ import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.isTvDevice
 
 private const val CATEGORY_DIALOG_THRESHOLD = 8
 
@@ -73,7 +80,24 @@ fun CompactCategorySelector(
 
     var pickerOpen by rememberSaveable { mutableStateOf(false) }
     var categoryQuery by rememberSaveable { mutableStateOf("") }
+    var restoreTriggerFocus by remember { mutableStateOf(false) }
+    val pickerTriggerFocus = remember { FocusRequester() }
+    val firstPickerRowFocus = remember { FocusRequester() }
+    val isTv = isTvDevice()
     val selectedProviderCategory = categories.firstOrNull { it.first == selectedCategoryId }
+
+    LaunchedEffect(pickerOpen, restoreTriggerFocus, isTv) {
+        if (!pickerOpen && restoreTriggerFocus && isTv) {
+            runCatching { pickerTriggerFocus.requestFocus() }
+            restoreTriggerFocus = false
+        }
+    }
+
+    val closePicker = {
+        pickerOpen = false
+        categoryQuery = ""
+        restoreTriggerFocus = true
+    }
 
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -126,7 +150,9 @@ fun CompactCategorySelector(
                         modifier = Modifier.size(19.dp),
                     )
                 },
-                modifier = Modifier.widthIn(max = 220.dp),
+                modifier = Modifier
+                    .widthIn(max = 220.dp)
+                    .focusRequester(pickerTriggerFocus),
             )
         }
     }
@@ -135,12 +161,16 @@ fun CompactCategorySelector(
         val filteredCategories = remember(categories, categoryQuery) {
             filterProviderCategories(categories, categoryQuery)
         }
+
+        LaunchedEffect(isTv, filteredCategories.isNotEmpty()) {
+            if (isTv && filteredCategories.isNotEmpty()) {
+                runCatching { firstPickerRowFocus.requestFocus() }
+            }
+        }
+
         NovaDialog(
             title = "Choose category",
-            onDismiss = {
-                pickerOpen = false
-                categoryQuery = ""
-            },
+            onDismiss = closePicker,
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 CategoryFilterField(
@@ -182,8 +212,12 @@ fun CompactCategorySelector(
                                 selected = id == selectedCategoryId,
                                 onClick = {
                                     onSelectCategory(id)
-                                    pickerOpen = false
-                                    categoryQuery = ""
+                                    closePicker()
+                                },
+                                modifier = if (index == 0) {
+                                    Modifier.focusRequester(firstPickerRowFocus)
+                                } else {
+                                    Modifier
                                 },
                             )
                         }
@@ -195,8 +229,8 @@ fun CompactCategorySelector(
 }
 
 /**
- * Rounded pill chip for the compact strip. Selection is marked with the
- * accent-gradient ring and a primary-tinted label; D-pad focus scales it up.
+ * Rounded pill chip for the compact strip. Selection is exposed to accessibility
+ * services and keyboard users while the visual focus treatment remains unchanged.
  */
 @Composable
 private fun CompactCategoryChip(
@@ -209,13 +243,15 @@ private fun CompactCategoryChip(
 ) {
     NovaClickable(
         onClick = onClick,
-        modifier = modifier.then(
-            if (selected) {
-                Modifier.border(1.dp, NovaAccentGradient, RoundedCornerShape(50))
-            } else {
-                Modifier
-            },
-        ),
+        modifier = modifier
+            .semantics { this.selected = selected }
+            .then(
+                if (selected) {
+                    Modifier.border(1.dp, NovaAccentGradient, RoundedCornerShape(50))
+                } else {
+                    Modifier
+                },
+            ),
         shape = RoundedCornerShape(50),
         containerColor = if (selected) {
             MaterialTheme.colorScheme.surfaceVariant
@@ -223,6 +259,8 @@ private fun CompactCategoryChip(
             MaterialTheme.colorScheme.surface
         },
         focusedScale = 1.04f,
+        accessibilityLabel = label,
+        accessibilityRole = Role.RadioButton,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -306,18 +344,22 @@ private fun CategoryPickerRow(
     name: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     NovaClickable(
         onClick = onClick,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .height(52.dp)
+            .semantics { this.selected = selected },
         containerColor = if (selected) {
             MaterialTheme.colorScheme.surfaceVariant
         } else {
             MaterialTheme.colorScheme.surface
         },
         focusedScale = 1.02f,
+        accessibilityLabel = name,
+        accessibilityRole = Role.RadioButton,
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
