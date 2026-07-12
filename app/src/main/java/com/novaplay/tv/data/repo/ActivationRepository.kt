@@ -93,7 +93,12 @@ class ActivationRepository @Inject constructor(
                 }
             }
             response.code() == 404 -> ActivationCheck.NotRegistered
-            response.code() == 403 -> ActivationCheck.KeyMismatch
+            response.code() == 403 -> {
+                managedAccessRepository.markSessionRevoked(
+                    "The legacy portal key is no longer authorized. Pair this device again.",
+                )
+                ActivationCheck.KeyMismatch
+            }
             else -> ActivationCheck.Failure("Portal error: HTTP ${response.code()}")
         }
     }
