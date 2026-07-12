@@ -9,4 +9,8 @@ captures/
 .cxx/
 *.apk
 *.aab
+*.jks
+*.keystore
+keystore.properties
+dist/
 tools/test.mp4
