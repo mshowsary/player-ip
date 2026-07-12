@@ -47,6 +47,15 @@ class PortalTokenStore @Inject constructor(
     }
 
     /**
+     * True when a paired-session envelope exists, even if its ciphertext can no
+     * longer be decrypted. This prevents a damaged managed session from falling
+     * back to the legacy activation path and appearing as personal access.
+     */
+    @Synchronized
+    fun hasStoredEnvelope(): Boolean =
+        preferences.contains(KEY_DEVICE_ID) || preferences.contains(KEY_ACCESS_TOKEN)
+
+    /**
      * Returns the stored session, or null when signed out. Fails closed: any decryption
      * failure wipes the store and returns null instead of crashing or retrying.
      */
@@ -63,7 +72,7 @@ class PortalTokenStore @Inject constructor(
             )
         }.getOrElse {
             // A restored backup can contain ciphertext without its device-bound
-            // Keystore key. Treat it as signed out rather than crashing startup.
+            // Keystore key. Treat it as an invalid managed session, not a crash.
             clear()
             null
         }
