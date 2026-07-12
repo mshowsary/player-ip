@@ -36,6 +36,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -48,6 +57,9 @@ import androidx.tv.material3.Glow
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
+import com.novaplay.tv.R
+import com.novaplay.tv.core.UserErrorCategory
+import com.novaplay.tv.core.UserFacingErrorPolicy
 import com.novaplay.tv.ui.theme.isTvDevice
 
 // The app's signature focus treatment: scale + accent border + soft glow,
@@ -66,6 +78,9 @@ fun NovaClickable(
     focusedScale: Float = 1.08f,
     onLongClick: (() -> Unit)? = null,
     restingBorder: Boolean = true,
+    accessibilityLabel: String? = null,
+    accessibilityStateDescription: String? = null,
+    accessibilityRole: Role = Role.Button,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -78,6 +93,11 @@ fun NovaClickable(
         onClick = onClick,
         onLongClick = onLongClick,
         modifier = modifier
+            .semantics(mergeDescendants = accessibilityLabel != null) {
+                role = accessibilityRole
+                accessibilityLabel?.let { contentDescription = it }
+                accessibilityStateDescription?.let { stateDescription = it }
+            }
             .then(if (isTv) Modifier.focusRequester(touchFocusRequester) else Modifier)
             .pointerInput(isTv, onLongClick != null) {
                 detectTapGestures(
@@ -158,6 +178,7 @@ fun NovaButton(
         },
         focusedContainerColor = MaterialTheme.colorScheme.primary,
         focusedScale = 1.06f,
+        accessibilityLabel = text,
     ) {
         FocusAwareButtonLabel(text = text, prominent = prominent)
     }
@@ -235,6 +256,7 @@ fun ErrorState(
 ) {
     val retryFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
+    val readableMessage = localizedUserError(message)
     LaunchedEffect(Unit) { if (isTv) retryFocus.requestFocus() }
     Column(
         modifier = modifier.fillMaxSize(),
@@ -242,19 +264,40 @@ fun ErrorState(
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            text = message,
+            text = readableMessage,
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(max = 480.dp),
+            modifier = Modifier
+                .widthIn(max = 480.dp)
+                .semantics { liveRegion = LiveRegionMode.Assertive },
         )
         NovaButton(
-            text = "Retry",
+            text = stringResource(R.string.action_retry),
             onClick = onRetry,
             modifier = Modifier
                 .padding(top = 24.dp)
                 .focusRequester(retryFocus),
         )
+    }
+}
+
+@Composable
+private fun localizedUserError(raw: String): String {
+    val presentation = remember(raw) { UserFacingErrorPolicy.from(raw) }
+    return when (presentation.category) {
+        UserErrorCategory.OFFLINE -> stringResource(R.string.error_offline)
+        UserErrorCategory.TIMEOUT -> stringResource(R.string.error_timeout)
+        UserErrorCategory.UNAUTHORIZED -> stringResource(R.string.error_unauthorized)
+        UserErrorCategory.NOT_FOUND -> stringResource(R.string.error_not_found)
+        UserErrorCategory.RATE_LIMITED -> stringResource(R.string.error_rate_limited)
+        UserErrorCategory.PROVIDER_UNAVAILABLE -> stringResource(R.string.error_provider_unavailable)
+        UserErrorCategory.STORAGE -> stringResource(R.string.error_storage)
+        UserErrorCategory.UNSUPPORTED_MEDIA -> stringResource(R.string.error_unsupported_media)
+        UserErrorCategory.CONFIGURATION -> stringResource(R.string.error_configuration)
+        UserErrorCategory.CONTENT_UNAVAILABLE -> stringResource(R.string.error_content_unavailable)
+        UserErrorCategory.USER_MESSAGE -> presentation.safeDetail ?: stringResource(R.string.error_unknown)
+        UserErrorCategory.UNKNOWN -> stringResource(R.string.error_unknown)
     }
 }
 
@@ -316,7 +359,9 @@ fun NovaDialog(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(bottom = 18.dp),
+                        modifier = Modifier
+                            .padding(bottom = 18.dp)
+                            .semantics { heading() },
                     )
                     content()
                 }
