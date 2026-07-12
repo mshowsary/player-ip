@@ -2,4 +2,22 @@
 <resources>
     <!-- Single source of truth for the product name; rename here + Gradle namespace. -->
     <string name="app_name">NovaPlay</string>
+
+    <string name="action_retry">Retry</string>
+    <string name="action_add_bookmark">Add bookmark</string>
+    <string name="action_remove_bookmark">Remove bookmark</string>
+    <string name="state_bookmarked">Bookmarked</string>
+    <string name="state_not_bookmarked">Not bookmarked</string>
+
+    <string name="error_offline">No internet connection. Check your connection and try again.</string>
+    <string name="error_timeout">The request took too long. Try again.</string>
+    <string name="error_unauthorized">Your access is no longer authorized. Refresh managed access or contact your provider.</string>
+    <string name="error_not_found">The requested content is no longer available.</string>
+    <string name="error_rate_limited">Too many requests were sent. Wait a moment and try again.</string>
+    <string name="error_provider_unavailable">The provider service is temporarily unavailable. Try again later.</string>
+    <string name="error_storage">There is not enough free storage to complete this operation.</string>
+    <string name="error_unsupported_media">This video format is not supported on this device.</string>
+    <string name="error_configuration">Provider access is not configured correctly. Contact your provider.</string>
+    <string name="error_content_unavailable">This content is currently unavailable. Try again later.</string>
+    <string name="error_unknown">Something went wrong. Try again.</string>
 </resources>
