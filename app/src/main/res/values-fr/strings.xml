@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NovaPlay</string>
+
+    <string name="nav_home">Accueil</string>
+    <string name="nav_live">Direct</string>
+    <string name="nav_movies">Films</string>
+    <string name="nav_series">Séries</string>
+    <string name="nav_settings">Paramètres</string>
+
+    <string name="home_live_tv">TV en direct</string>
+    <string name="home_movies">Films</string>
+    <string name="home_series">Séries</string>
+    <string name="home_playlists">Listes de lecture</string>
+    <string name="home_settings">Paramètres</string>
+    <string name="home_expires">expire le %1$s</string>
+    <string name="home_syncing">Synchronisation de %1$s…</string>
+    <string name="home_last_sync_failed">La dernière synchronisation a échoué — le contenu peut être ancien</string>
+
+    <string name="managed_status_personal">Accès personnel</string>
+    <string name="managed_status_active">Accès géré actif</string>
+    <string name="managed_status_paused">Accès géré suspendu</string>
+    <string name="managed_status_revoked">Accès géré révoqué</string>
+    <string name="managed_no_services">Aucun service de streaming géré n’est disponible actuellement.</string>
+    <string name="managed_available_services">Services disponibles : %1$s</string>
+    <string name="service_live">Direct</string>
+    <string name="service_movies">Films</string>
+    <string name="service_series">Séries</string>
+    <string name="blocked_live_title">La TV en direct n’est pas disponible</string>
+    <string name="blocked_movies_title">Les films ne sont pas disponibles</string>
+    <string name="blocked_series_title">Les séries ne sont pas disponibles</string>
+    <string name="blocked_default_message">Ce service n’est pas inclus actuellement dans l’accès géré attribué à cet appareil.</string>
+    <string name="support_code">Code d’assistance : %1$s</string>
+
+    <string name="action_retry">Réessayer</string>
+    <string name="action_open_playlists">Ouvrir les listes</string>
+    <string name="action_view_managed_access">Voir l’accès géré</string>
+    <string name="action_add_bookmark">Ajouter aux favoris</string>
+    <string name="action_remove_bookmark">Retirer des favoris</string>
+    <string name="state_bookmarked">Dans les favoris</string>
+    <string name="state_not_bookmarked">Pas dans les favoris</string>
+
+    <string name="error_offline">Aucune connexion Internet. Vérifiez votre connexion puis réessayez.</string>
+    <string name="error_timeout">La demande a pris trop de temps. Réessayez.</string>
+    <string name="error_unauthorized">Votre accès n’est plus autorisé. Actualisez l’accès géré ou contactez votre fournisseur.</string>
+    <string name="error_not_found">Le contenu demandé n’est plus disponible.</string>
+    <string name="error_rate_limited">Trop de demandes ont été envoyées. Attendez un moment puis réessayez.</string>
+    <string name="error_provider_unavailable">Le service du fournisseur est temporairement indisponible. Réessayez plus tard.</string>
+    <string name="error_storage">L’espace de stockage libre est insuffisant pour terminer cette opération.</string>
+    <string name="error_unsupported_media">Ce format vidéo n’est pas pris en charge sur cet appareil.</string>
+    <string name="error_configuration">L’accès au fournisseur n’est pas configuré correctement. Contactez votre fournisseur.</string>
+    <string name="error_content_unavailable">Ce contenu est actuellement indisponible. Réessayez plus tard.</string>
+    <string name="error_unknown">Une erreur s’est produite. Réessayez.</string>
+</resources>
