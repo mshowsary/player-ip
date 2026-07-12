@@ -151,7 +151,12 @@ class PortalPairingRepository @Inject constructor(
         requirePortalConfigured()
 
         val identity = deviceIdentity.get()
-        var tokens = tokenStore.load() ?: error("This device is not paired")
+        var tokens = tokenStore.load() ?: run {
+            managedAccessRepository.markSessionRevoked(
+                "The stored managed session could not be opened. Pair this device again.",
+            )
+            error("Portal session is unreadable; pair this device again")
+        }
         if (tokens.deviceId != identity.deviceId) {
             revokeSession("The managed session belongs to another app installation. Pair this device again.")
             error("Portal session belongs to another installation")
@@ -171,8 +176,8 @@ class PortalPairingRepository @Inject constructor(
         consumeAuthorizedResponse(response)
     }
 
-    /** True when encrypted pairing tokens exist locally. */
-    fun hasStoredSession(): Boolean = tokenStore.load() != null
+    /** True when a paired-session envelope exists, including an unreadable one. */
+    fun hasStoredSession(): Boolean = tokenStore.hasStoredEnvelope()
 
     /** Explicit user disconnect returns to personal mode; server failures never call this path. */
     fun disconnect() {
