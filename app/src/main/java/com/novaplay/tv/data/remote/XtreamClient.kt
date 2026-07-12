@@ -106,6 +106,17 @@ class XtreamClient @Inject constructor(
         stage(actionUrl(opened, "get_series"), destination)
     }
 
+    /** Stages the panel's full XMLTV guide (xmltv.php) to a local file; see [stageLiveStreams]. */
+    suspend fun stageXmltv(playlist: Playlist, destination: File) {
+        val opened = playlistSecrets.open(playlist)
+        val url = serverUrl(opened).newBuilder()
+            .addPathSegment("xmltv.php")
+            .addQueryParameter("username", opened.username.orEmpty())
+            .addQueryParameter("password", opened.password.orEmpty())
+            .build().toString()
+        stage(url, destination)
+    }
+
     /** Streams live-channel DTOs out of a staged file, decoding lazily one element at a time. */
     suspend fun consumeStagedLive(file: File, consume: suspend (Sequence<XtreamLiveStreamDto>) -> Unit) =
         consumeFileSequence(file, XtreamLiveStreamDto.serializer(), consume)

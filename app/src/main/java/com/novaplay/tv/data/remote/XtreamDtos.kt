@@ -42,6 +42,7 @@ data class XtreamLiveStreamDto(
     @Serializable(with = LenientStringOrNull::class) val name: String? = null,
     @Serializable(with = LenientStringOrNull::class) @SerialName("stream_icon") val streamIcon: String? = null,
     @Serializable(with = LenientStringOrNull::class) @SerialName("category_id") val categoryId: String? = null,
+    @Serializable(with = LenientStringOrNull::class) @SerialName("epg_channel_id") val epgChannelId: String? = null,
 )
 
 /** One row of get_vod_streams — list-level fields only; plot and duration come later from get_vod_info. */
