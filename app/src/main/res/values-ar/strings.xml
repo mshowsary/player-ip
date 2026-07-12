@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">NovaPlay</string>
+
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_live">البث المباشر</string>
+    <string name="nav_movies">الأفلام</string>
+    <string name="nav_series">المسلسلات</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <string name="home_live_tv">التلفزيون المباشر</string>
+    <string name="home_movies">الأفلام</string>
+    <string name="home_series">المسلسلات</string>
+    <string name="home_playlists">قوائم التشغيل</string>
+    <string name="home_settings">الإعدادات</string>
+    <string name="home_expires">ينتهي في %1$s</string>
+    <string name="home_syncing">جارٍ مزامنة %1$s…</string>
+    <string name="home_last_sync_failed">فشلت آخر مزامنة — قد يكون المحتوى قديمًا</string>
+
+    <string name="managed_status_personal">وصول شخصي</string>
+    <string name="managed_status_active">الوصول المُدار مفعّل</string>
+    <string name="managed_status_paused">الوصول المُدار متوقف مؤقتًا</string>
+    <string name="managed_status_revoked">تم إلغاء الوصول المُدار</string>
+    <string name="managed_no_services">لا توجد خدمات بث مُدارة متاحة حاليًا.</string>
+    <string name="managed_available_services">الخدمات المتاحة: %1$s</string>
+    <string name="service_live">البث المباشر</string>
+    <string name="service_movies">الأفلام</string>
+    <string name="service_series">المسلسلات</string>
+    <string name="blocked_live_title">التلفزيون المباشر غير متاح</string>
+    <string name="blocked_movies_title">الأفلام غير متاحة</string>
+    <string name="blocked_series_title">المسلسلات غير متاحة</string>
+    <string name="blocked_default_message">هذه الخدمة غير مشمولة حاليًا في الوصول المُدار المخصص لهذا الجهاز.</string>
+    <string name="support_code">رمز الدعم: %1$s</string>
+
+    <string name="action_retry">إعادة المحاولة</string>
+    <string name="action_open_playlists">فتح قوائم التشغيل</string>
+    <string name="action_view_managed_access">عرض الوصول المُدار</string>
+    <string name="action_add_bookmark">إضافة إلى المفضلة</string>
+    <string name="action_remove_bookmark">إزالة من المفضلة</string>
+    <string name="state_bookmarked">ضمن المفضلة</string>
+    <string name="state_not_bookmarked">ليس ضمن المفضلة</string>
+
+    <string name="error_offline">لا يوجد اتصال بالإنترنت. تحقق من الاتصال ثم أعد المحاولة.</string>
+    <string name="error_timeout">استغرق الطلب وقتًا طويلًا. أعد المحاولة.</string>
+    <string name="error_unauthorized">لم يعد وصولك مصرحًا به. حدّث الوصول المُدار أو تواصل مع مزود الخدمة.</string>
+    <string name="error_not_found">المحتوى المطلوب لم يعد متاحًا.</string>
+    <string name="error_rate_limited">تم إرسال طلبات كثيرة. انتظر قليلًا ثم أعد المحاولة.</string>
+    <string name="error_provider_unavailable">خدمة المزود غير متاحة مؤقتًا. أعد المحاولة لاحقًا.</string>
+    <string name="error_storage">لا توجد مساحة تخزين كافية لإكمال هذه العملية.</string>
+    <string name="error_unsupported_media">تنسيق الفيديو هذا غير مدعوم على هذا الجهاز.</string>
+    <string name="error_configuration">وصول المزود غير مضبوط بشكل صحيح. تواصل مع مزود الخدمة.</string>
+    <string name="error_content_unavailable">هذا المحتوى غير متاح حاليًا. أعد المحاولة لاحقًا.</string>
+    <string name="error_unknown">حدث خطأ ما. أعد المحاولة.</string>
+</resources>
