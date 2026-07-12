@@ -12,7 +12,7 @@ class TopLevelNavigationPolicyTest {
     @Test
     fun personalAccessShowsAllDestinationsInStableOrder() {
         assertEquals(
-            listOf(Routes.HOME, Routes.LIVE, Routes.MOVIES, Routes.SERIES, Routes.SETTINGS),
+            listOf(Routes.HOME, Routes.LIVE, Routes.GUIDE, Routes.MOVIES, Routes.SERIES, Routes.SETTINGS),
             TopLevelNavigationPolicy.visibleRoutes(ManagedAccessPolicy()),
         )
     }
@@ -28,7 +28,21 @@ class TopLevelNavigationPolicyTest {
             ),
         )
 
-        assertEquals(listOf(Routes.HOME, Routes.LIVE, Routes.SETTINGS), routes)
+        assertEquals(listOf(Routes.HOME, Routes.LIVE, Routes.GUIDE, Routes.SETTINGS), routes)
+    }
+
+    @Test
+    fun guideFollowsTheLiveEntitlement() {
+        val routes = TopLevelNavigationPolicy.visibleRoutes(
+            ManagedAccessPolicy(
+                state = ManagedAccessState.ACTIVE,
+                allowLive = false,
+                allowMovies = true,
+                allowSeries = true,
+            ),
+        )
+
+        assertEquals(listOf(Routes.HOME, Routes.MOVIES, Routes.SERIES, Routes.SETTINGS), routes)
     }
 
     @Test

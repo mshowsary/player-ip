@@ -12,6 +12,7 @@ internal object TopLevelNavigationPolicy {
     private val orderedRoutes = listOf(
         Routes.HOME,
         Routes.LIVE,
+        Routes.GUIDE,
         Routes.MOVIES,
         Routes.SERIES,
         Routes.SETTINGS,
@@ -19,7 +20,8 @@ internal object TopLevelNavigationPolicy {
 
     fun visibleRoutes(policy: ManagedAccessPolicy): List<String> = orderedRoutes.filter { route ->
         when (route) {
-            Routes.LIVE -> policy.allows(ManagedFeature.LIVE)
+            // The guide is a Live surface: it shows and tunes live channels only.
+            Routes.LIVE, Routes.GUIDE -> policy.allows(ManagedFeature.LIVE)
             Routes.MOVIES -> policy.allows(ManagedFeature.MOVIES)
             Routes.SERIES -> policy.allows(ManagedFeature.SERIES)
             else -> true

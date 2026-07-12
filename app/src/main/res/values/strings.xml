@@ -42,6 +42,11 @@
     <string name="state_not_bookmarked">Not bookmarked</string>
 
     <string name="epg_next">Next: %1$s</string>
+    <string name="nav_guide">Guide</string>
+    <string name="home_guide">TV Guide</string>
+    <string name="guide_title">TV Guide</string>
+    <string name="guide_select_hint">Move through the guide to see programme details</string>
+    <string name="guide_empty">No channels yet — add and sync a playlist to see the guide</string>
 
     <string name="error_offline">No internet connection. Check your connection and try again.</string>
     <string name="error_timeout">The request took too long. Try again.</string>

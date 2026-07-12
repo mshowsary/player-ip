@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Movie
@@ -50,6 +51,7 @@ private data class ShellDestination(
 private val topLevelDestinations = listOf(
     ShellDestination(Routes.HOME, R.string.nav_home, Icons.Default.Home),
     ShellDestination(Routes.LIVE, R.string.nav_live, Icons.Default.LiveTv, ManagedFeature.LIVE),
+    ShellDestination(Routes.GUIDE, R.string.nav_guide, Icons.Default.DateRange, ManagedFeature.LIVE),
     ShellDestination(Routes.MOVIES, R.string.nav_movies, Icons.Default.Movie, ManagedFeature.MOVIES),
     ShellDestination(Routes.SERIES, R.string.nav_series, Icons.Default.VideoLibrary, ManagedFeature.SERIES),
     ShellDestination(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings),

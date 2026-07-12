@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Movie
@@ -85,6 +86,7 @@ private data class HomeCard(
 @Composable
 fun HomeScreen(
     onOpenLive: () -> Unit,
+    onOpenGuide: () -> Unit,
     onOpenMovies: () -> Unit,
     onOpenSeries: () -> Unit,
     onOpenPlaylists: () -> Unit,
@@ -101,6 +103,7 @@ fun HomeScreen(
     val cards = remember(
         managedAccess,
         onOpenLive,
+        onOpenGuide,
         onOpenMovies,
         onOpenSeries,
         onOpenPlaylists,
@@ -108,6 +111,7 @@ fun HomeScreen(
     ) {
         listOf(
             HomeCard(R.string.home_live_tv, Icons.Default.LiveTv, onOpenLive, ManagedFeature.LIVE),
+            HomeCard(R.string.home_guide, Icons.Default.DateRange, onOpenGuide, ManagedFeature.LIVE),
             HomeCard(R.string.home_movies, Icons.Default.Movie, onOpenMovies, ManagedFeature.MOVIES),
             HomeCard(R.string.home_series, Icons.Default.VideoLibrary, onOpenSeries, ManagedFeature.SERIES),
             HomeCard(R.string.home_playlists, Icons.Default.SwapHoriz, onOpenPlaylists),

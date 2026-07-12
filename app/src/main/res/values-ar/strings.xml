@@ -41,6 +41,11 @@
     <string name="state_not_bookmarked">ليس ضمن المفضلة</string>
 
     <string name="epg_next">التالي: %1$s</string>
+    <string name="nav_guide">الدليل</string>
+    <string name="home_guide">دليل التلفاز</string>
+    <string name="guide_title">دليل التلفاز</string>
+    <string name="guide_select_hint">تنقّل في الدليل لعرض تفاصيل البرامج</string>
+    <string name="guide_empty">لا توجد قنوات بعد — أضِف قائمة تشغيل وزامِنها لعرض الدليل</string>
 
     <string name="error_offline">لا يوجد اتصال بالإنترنت. تحقق من الاتصال ثم أعد المحاولة.</string>
     <string name="error_timeout">استغرق الطلب وقتًا طويلًا. أعد المحاولة.</string>

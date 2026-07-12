@@ -10,6 +10,7 @@ object Routes {
     const val HOME = "home"
 
     const val LIVE = "live"
+    const val GUIDE = "guide"
     const val LIVE_PLAYER = "live_player/{channelId}?categoryId={categoryId}"
     /** Concrete live-player route; pass categoryId -1 to match the destination's "no category" default. */
     fun livePlayer(channelId: Long, categoryId: Long): String =

@@ -26,6 +26,7 @@ import com.novaplay.tv.ui.activation.ActivationScreen
 import com.novaplay.tv.ui.components.NovaBackdrop
 import com.novaplay.tv.ui.gate.GateState
 import com.novaplay.tv.ui.gate.GateViewModel
+import com.novaplay.tv.ui.guide.GuideScreen
 import com.novaplay.tv.ui.home.HomeScreen
 import com.novaplay.tv.ui.live.LivePlayerScreen
 import com.novaplay.tv.ui.live.ResponsiveLiveScreen
@@ -91,11 +92,26 @@ fun NovaNavGraph(
                 composable(Routes.HOME) {
                     HomeScreen(
                         onOpenLive = { navController.navigateTopLevel(Routes.LIVE) },
+                        onOpenGuide = { navController.navigateTopLevel(Routes.GUIDE) },
                         onOpenMovies = { navController.navigateTopLevel(Routes.MOVIES) },
                         onOpenSeries = { navController.navigateTopLevel(Routes.SERIES) },
                         onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                         onOpenSettings = { navController.navigateTopLevel(Routes.SETTINGS) },
                     )
+                }
+
+                composable(Routes.GUIDE) {
+                    ManagedDestination(
+                        feature = ManagedFeature.LIVE,
+                        policy = policy,
+                        navController = navController,
+                    ) {
+                        GuideScreen(
+                            onPlayChannel = { channelId ->
+                                navController.navigate(Routes.livePlayer(channelId, -1L))
+                            },
+                        )
+                    }
                 }
 
                 composable(Routes.LIVE) {

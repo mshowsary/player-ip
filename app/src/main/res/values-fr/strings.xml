@@ -41,6 +41,11 @@
     <string name="state_not_bookmarked">Pas dans les favoris</string>
 
     <string name="epg_next">Ensuite : %1$s</string>
+    <string name="nav_guide">Guide</string>
+    <string name="home_guide">Guide TV</string>
+    <string name="guide_title">Guide TV</string>
+    <string name="guide_select_hint">Parcourez le guide pour voir les détails des programmes</string>
+    <string name="guide_empty">Aucune chaîne pour l\'instant — ajoutez et synchronisez une playlist pour voir le guide</string>
 
     <string name="error_offline">Aucune connexion Internet. Vérifiez votre connexion puis réessayez.</string>
     <string name="error_timeout">La demande a pris trop de temps. Réessayez.</string>
