@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_sync_health_action">Synchronization &amp; device health</string>
+    <string name="settings_sync_health_title">Synchronization and device health</string>
+</resources>
