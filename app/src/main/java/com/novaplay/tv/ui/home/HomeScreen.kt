@@ -340,7 +340,7 @@ private fun Wordmark() {
     )
 }
 
-/** Focusable hub card: circled icon over a glass highlight; scales up 7% on focus. */
+/** One focusable action with a combined spoken label; the icon is decorative. */
 @Composable
 private fun HomeCardItem(
     card: HomeCard,
@@ -352,6 +352,7 @@ private fun HomeCardItem(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
         focusedScale = 1.07f,
+        accessibilityLabel = label,
     ) {
         Box(
             modifier = Modifier
@@ -371,7 +372,7 @@ private fun HomeCardItem(
             ) {
                 Icon(
                     imageVector = card.icon,
-                    contentDescription = label,
+                    contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp),
                 )
