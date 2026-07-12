@@ -22,6 +22,13 @@ data class M3uEntry(
     val url: String,
 )
 
+/** Playlist-level metadata from the #EXTM3U header line. */
+data class M3uHeader(
+    // First guide URL from url-tvg / x-tvg-url (the attribute may list several,
+    // comma-separated). May embed provider tokens — treat like a credential.
+    val tvgUrl: String?,
+)
+
 /**
  * Line-by-line streaming M3U parser: entries are emitted to a callback one at a
  * time, so arbitrarily large playlists are never materialized in memory.
@@ -31,10 +38,13 @@ class M3uParser @Inject constructor(
     private val okHttpClient: OkHttpClient,
 ) {
     // Direct parsing remains available for validation and smaller operations.
-    suspend fun parse(url: String, onEntry: suspend (M3uEntry) -> Unit): Unit =
-        withContext(Dispatchers.IO) {
-            openReader(url).use { reader -> parseReader(reader, onEntry) }
-        }
+    suspend fun parse(
+        url: String,
+        onHeader: suspend (M3uHeader) -> Unit = {},
+        onEntry: suspend (M3uEntry) -> Unit,
+    ): Unit = withContext(Dispatchers.IO) {
+        openReader(url).use { reader -> parseReader(reader, onHeader, onEntry) }
+    }
 
     /**
      * Copies a remote or local M3U into a bounded cache file before Room changes
@@ -71,18 +81,33 @@ class M3uParser @Inject constructor(
     }
 
     /** Parse an already-local snapshot without any provider network request. */
-    suspend fun parseSnapshot(file: File, onEntry: suspend (M3uEntry) -> Unit) {
-        file.bufferedReader().use { reader -> parseReader(reader, onEntry) }
+    suspend fun parseSnapshot(
+        file: File,
+        onHeader: suspend (M3uHeader) -> Unit = {},
+        onEntry: suspend (M3uEntry) -> Unit,
+    ) {
+        file.bufferedReader().use { reader -> parseReader(reader, onHeader, onEntry) }
     }
 
     // Core state machine: an #EXTINF line arms `pending`; the next non-comment line is
     // its URL. Nameless entries are dropped so dirty rows never abort the whole playlist.
-    private suspend fun parseReader(reader: BufferedReader, onEntry: suspend (M3uEntry) -> Unit) {
+    private suspend fun parseReader(
+        reader: BufferedReader,
+        onHeader: suspend (M3uHeader) -> Unit,
+        onEntry: suspend (M3uEntry) -> Unit,
+    ) {
         var pending: PendingEntry? = null
+        var headerSeen = false
         while (true) {
             val line = reader.readLine()?.trim() ?: break
             when {
-                line.isEmpty() || line.startsWith("#EXTM3U") -> Unit
+                line.isEmpty() -> Unit
+                line.startsWith("#EXTM3U") -> {
+                    if (!headerSeen) {
+                        headerSeen = true
+                        onHeader(parseHeader(line))
+                    }
+                }
                 line.startsWith("#EXTINF") -> pending = parseExtInf(line)
                 line.startsWith("#") -> Unit // e.g. #EXTVLCOPT
                 else -> {
@@ -135,6 +160,18 @@ class M3uParser @Inject constructor(
             require(total <= limit) { "M3U playlist exceeds the ${limit / 1024 / 1024} MB safety limit" }
             output.write(buffer, 0, read)
         }
+    }
+
+    // Guide source from the #EXTM3U header: url-tvg (or the x-tvg-url alias) may
+    // hold a comma-separated list; only the first entry is used.
+    private fun parseHeader(line: String): M3uHeader {
+        val attributes = ATTRIBUTE_REGEX.findAll(line)
+            .associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+        val tvgUrl = (attributes["url-tvg"] ?: attributes["x-tvg-url"])
+            ?.split(',')
+            ?.firstOrNull { it.isNotBlank() }
+            ?.trim()
+        return M3uHeader(tvgUrl = tvgUrl)
     }
 
     // #EXTINF metadata waiting for its URL line.

@@ -1,7 +1,9 @@
 package com.novaplay.tv.ui.settings
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -12,40 +14,58 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 
 /**
- * Settings entry point that layers a "Sync & health" button over [PolishedSettingsScreen].
- * The button sits at the bottom end of the screen and opens the performance and
- * diagnostics dialog on top of the regular settings panels.
+ * Settings entry point with a dedicated full-width synchronization and health
+ * action below the scrollable settings content. Keeping the action in layout
+ * flow prevents it from covering subtitle options or the bottom navigation.
  */
 @Composable
 fun EnhancedSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     var showPerformance by remember { mutableStateOf(false) }
-    val openFocus = remember { FocusRequester() }
+    var restoreHealthFocus by remember { mutableStateOf(false) }
+    val healthActionFocus = remember { FocusRequester() }
+    val isTv = isTvDevice()
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        PolishedSettingsScreen(viewModel = viewModel)
+    // Dialogs use their own focus scope. Returning focus to the exact opener
+    // prevents a remote or keyboard user from being stranded after dismissal.
+    LaunchedEffect(showPerformance, isTv, restoreHealthFocus) {
+        if (!showPerformance && isTv && restoreHealthFocus) {
+            runCatching { healthActionFocus.requestFocus() }
+            restoreHealthFocus = false
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.weight(1f)) {
+            PolishedSettingsScreen(viewModel = viewModel)
+        }
         NovaButton(
-            text = "Sync & health",
-            onClick = { showPerformance = true },
+            text = stringResource(R.string.settings_sync_health_action),
+            onClick = {
+                restoreHealthFocus = true
+                showPerformance = true
+            },
+            prominent = true,
             modifier = Modifier
-                .align(Alignment.BottomEnd)
                 .padding(screenPadding())
-                .focusRequester(openFocus),
+                .fillMaxWidth()
+                .focusRequester(healthActionFocus),
         )
     }
 
@@ -58,9 +78,8 @@ fun EnhancedSettingsScreen(
 }
 
 /**
- * Dialog hosting [PerformanceSettingsPanel] wired to the shared view model. Refreshes
- * diagnostics when opened, caps its height so the content scrolls on small screens,
- * and on TV moves initial focus to the first background-sync choice.
+ * Dialog hosting [PerformanceSettingsPanel]. It refreshes diagnostics when
+ * opened, uses a responsive height, and moves TV focus to the first sync choice.
  */
 @Composable
 private fun PerformanceSettingsDialog(
@@ -75,7 +94,11 @@ private fun PerformanceSettingsDialog(
     val message by viewModel.diagnosticsMessage.collectAsStateWithLifecycle()
     val firstFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
-    val maxHeight = (LocalConfiguration.current.screenHeightDp.dp - 120.dp).coerceAtLeast(260.dp)
+    val configuration = LocalConfiguration.current
+    val compact = configuration.screenWidthDp < 600
+    val maxHeight = (
+        configuration.screenHeightDp * if (compact) 0.72f else 0.76f
+    ).dp.coerceAtLeast(220.dp)
 
     LaunchedEffect(Unit) {
         viewModel.refreshDiagnostics()
@@ -83,7 +106,7 @@ private fun PerformanceSettingsDialog(
     }
 
     NovaDialog(
-        title = "Synchronization and device health",
+        title = stringResource(R.string.settings_sync_health_title),
         onDismiss = onDismiss,
         maxWidth = 720.dp,
     ) {

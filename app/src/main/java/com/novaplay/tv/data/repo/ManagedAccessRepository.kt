@@ -1,6 +1,7 @@
 package com.novaplay.tv.data.repo
 
 import android.content.Context
+import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.remote.PortalPolicyDto
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,13 +103,37 @@ class ManagedAccessRepository @Inject constructor(
     val policy: StateFlow<ManagedAccessPolicy> = _policy.asStateFlow()
 
     /**
-     * Applies a policy fresh from the portal. A null DTO is ignored on purpose:
-     * an omitted policy keeps the last-known one instead of silently unlocking.
+     * Applies one managed portal response. An omitted policy preserves the last
+     * known managed decision; when no managed decision exists yet it installs a
+     * fail-closed suspended state instead of silently granting personal access.
+     *
+     * Debug presets remain stable during automatic mock refreshes. The explicit
+     * Refresh managed access action clears that preview override first.
      */
     @Synchronized
     fun applyPortalPolicy(dto: PortalPolicyDto?) {
-        if (dto == null) return
-        apply(ManagedAccessPolicy.fromPortal(dto, nowEpochSec()))
+        if (BuildConfig.DEBUG && preferences.getBoolean(KEY_DEBUG_OVERRIDE, false)) return
+        apply(
+            ManagedAccessTransitions.fromPortalResponse(
+                current = _policy.value,
+                dto = dto,
+                nowEpochSec = nowEpochSec(),
+            ),
+        )
+    }
+
+    /** Persists a durable fail-closed state after token revocation or session mismatch. */
+    @Synchronized
+    fun markSessionRevoked(message: String? = null, supportCode: String? = null) {
+        preferences.edit().remove(KEY_DEBUG_OVERRIDE).apply()
+        apply(
+            ManagedAccessTransitions.sessionRevoked(
+                current = _policy.value,
+                nowEpochSec = nowEpochSec(),
+                message = message,
+                supportCode = supportCode,
+            ),
+        )
     }
 
     /** Persists the policy and emits it to [policy] collectors in one step. */
@@ -127,11 +152,24 @@ class ManagedAccessRepository @Inject constructor(
         _policy.value = policy
     }
 
-    /** Drops the stored policy and reverts to unmanaged, e.g. on portal disconnect. */
+    /**
+     * Explicitly disconnects portal governance and returns to personal access.
+     * Server failures and token revocations must call [markSessionRevoked] instead.
+     */
     @Synchronized
-    fun clear() {
+    fun disconnectToPersonal() {
         preferences.edit().clear().apply()
-        _policy.value = ManagedAccessPolicy()
+        _policy.value = ManagedAccessTransitions.explicitDisconnect()
+    }
+
+    /** Compatibility alias for older callers; use only for an explicit user disconnect. */
+    @Synchronized
+    fun clear() = disconnectToPersonal()
+
+    /** Allows the manual refresh action to replace a debug preview with the portal/mock policy. */
+    @Synchronized
+    fun clearDebugPreset() {
+        if (BuildConfig.DEBUG) preferences.edit().remove(KEY_DEBUG_OVERRIDE).apply()
     }
 
     /** Installs a canned policy for debug builds so each managed state can be exercised by hand. */
@@ -174,20 +212,24 @@ class ManagedAccessRepository @Inject constructor(
             )
             DebugManagedPolicyPreset.UNMANAGED -> ManagedAccessPolicy()
         }
+        if (BuildConfig.DEBUG) preferences.edit().putBoolean(KEY_DEBUG_OVERRIDE, true).apply()
         apply(next)
     }
 
-    // Restores the persisted policy at startup; unknown or missing state falls
-    // back to UNMANAGED, matching a fresh install.
+    // Restores the persisted policy at startup. A genuinely missing state is a
+    // fresh personal installation; an unknown stored state fails closed.
     private fun load(): ManagedAccessPolicy {
-        val state = preferences.getString(KEY_STATE, null)
-            ?.let { stored -> ManagedAccessState.entries.firstOrNull { it.name == stored } }
-            ?: ManagedAccessState.UNMANAGED
+        val storedState = preferences.getString(KEY_STATE, null)
+        val state = when {
+            storedState == null -> ManagedAccessState.UNMANAGED
+            else -> ManagedAccessState.entries.firstOrNull { it.name == storedState }
+                ?: ManagedAccessState.SUSPENDED
+        }
         return ManagedAccessPolicy(
             state = state,
-            allowLive = preferences.getBoolean(KEY_ALLOW_LIVE, true),
-            allowMovies = preferences.getBoolean(KEY_ALLOW_MOVIES, true),
-            allowSeries = preferences.getBoolean(KEY_ALLOW_SERIES, true),
+            allowLive = preferences.getBoolean(KEY_ALLOW_LIVE, state == ManagedAccessState.UNMANAGED),
+            allowMovies = preferences.getBoolean(KEY_ALLOW_MOVIES, state == ManagedAccessState.UNMANAGED),
+            allowSeries = preferences.getBoolean(KEY_ALLOW_SERIES, state == ManagedAccessState.UNMANAGED),
             message = preferences.getString(KEY_MESSAGE, null),
             supportCode = preferences.getString(KEY_SUPPORT_CODE, null),
             revision = preferences.getLong(KEY_REVISION, 0L),
@@ -208,6 +250,7 @@ class ManagedAccessRepository @Inject constructor(
         const val KEY_SUPPORT_CODE = "support_code"
         const val KEY_REVISION = "revision"
         const val KEY_UPDATED_AT = "updated_at"
+        const val KEY_DEBUG_OVERRIDE = "debug_override"
         const val DEBUG_REVISION = 9_999L
     }
 }

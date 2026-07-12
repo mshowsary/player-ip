@@ -15,6 +15,7 @@ import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.db.Series
 import com.novaplay.tv.data.db.SeriesCategory
 import com.novaplay.tv.data.db.VodCategory
+import com.novaplay.tv.data.epg.EpgChannelKey
 import com.novaplay.tv.data.m3u.M3uParser
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.LastSyncSummary
@@ -68,6 +69,7 @@ class SyncRepository @Inject constructor(
     private val m3uParser: M3uParser,
     private val playlistSecrets: PlaylistSecrets,
     private val preferences: AppPreferences,
+    private val epgRepository: EpgRepository,
 ) {
     private val _status = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
     val status: StateFlow<SyncStatus> = _status.asStateFlow()
@@ -98,6 +100,7 @@ class SyncRepository @Inject constructor(
                 Playlist.TYPE_M3U -> syncM3u(playlist)
                 else -> error("Unknown playlist type: ${playlist.type}")
             }
+            val epgProgrammes = refreshGuide(playlist)
             optimizeDatabase()
             val completedAt = System.currentTimeMillis()
             db.playlistDao().updateLastSync(playlist.id, completedAt)
@@ -112,6 +115,7 @@ class SyncRepository @Inject constructor(
                     liveChannels = counts.live,
                     movies = counts.movies,
                     series = counts.series,
+                    epgProgrammes = epgProgrammes,
                 ),
             )
             _status.value = SyncStatus.Idle
@@ -121,6 +125,7 @@ class SyncRepository @Inject constructor(
             // Do not attach the throwable: provider URLs can contain credentials.
             Log.w(TAG, "Sync failed for playlist ${playlist.id}: ${error::class.java.simpleName}: $message")
             val counts = runCatching { catalogCounts(playlist.id) }.getOrDefault(CatalogCounts(0, 0, 0))
+            val epgCount = runCatching { db.epgDao().countForPlaylist(playlist.id) }.getOrDefault(0)
             preferences.recordSyncSummary(
                 LastSyncSummary(
                     completedAtEpochMs = System.currentTimeMillis(),
@@ -131,6 +136,7 @@ class SyncRepository @Inject constructor(
                     liveChannels = counts.live,
                     movies = counts.movies,
                     series = counts.series,
+                    epgProgrammes = epgCount,
                     error = message,
                 ),
             )
@@ -189,6 +195,7 @@ class SyncRepository @Inject constructor(
                             num = if (dto.num > 0) dto.num else fallbackNum,
                             name = name,
                             logoUrl = dto.streamIcon,
+                            epgChannelId = EpgChannelKey.normalize(dto.epgChannelId),
                         )
                         if (buffer.size >= CHUNK) {
                             dao.insertChannels(buffer)
@@ -298,6 +305,21 @@ class SyncRepository @Inject constructor(
         }
     }
 
+    // Guide refresh is best-effort: a provider without EPG (or a temporary guide
+    // failure) must never fail the catalogue sync. On failure the previous guide
+    // stays readable and the summary reports its (still installed) row count.
+    private suspend fun refreshGuide(playlist: Playlist): Int {
+        _status.value = SyncStatus.Syncing("Updating TV guide")
+        // M3U syncs may have just discovered/updated the guide URL — reload the row.
+        val fresh = db.playlistDao().getById(playlist.id) ?: playlist
+        return runCatching { epgRepository.refresh(fresh, System.currentTimeMillis()) }
+            .onFailure { error ->
+                // Never log the error itself: guide URLs can embed credentials.
+                Log.w(TAG, "Guide refresh failed for playlist ${playlist.id}: ${error::class.java.simpleName}")
+            }
+            .getOrElse { runCatching { db.epgDao().countForPlaylist(playlist.id) }.getOrDefault(0) }
+    }
+
     // Inserts live categories and returns remote id -> local row id, used to
     // resolve each channel's category while streaming the snapshot.
     private suspend fun insertLiveCategories(
@@ -330,6 +352,7 @@ class SyncRepository @Inject constructor(
             _status.value = SyncStatus.Syncing("Downloading playlist")
             m3uParser.snapshot(url, snapshot)
             _status.value = SyncStatus.Syncing("Installing playlist")
+            var discoveredGuideUrl: String? = null
             db.withTransaction {
                 val dao = db.liveDao()
                 dao.wipeChannels(playlist.id)
@@ -338,7 +361,10 @@ class SyncRepository @Inject constructor(
                 val categoryIds = HashMap<String, Long>()
                 val buffer = ArrayList<LiveChannel>(CHUNK)
                 var num = 0
-                m3uParser.parseSnapshot(snapshot) { entry ->
+                m3uParser.parseSnapshot(
+                    snapshot,
+                    onHeader = { header -> discoveredGuideUrl = header.tvgUrl },
+                ) { entry ->
                     num++
                     val categoryId = entry.group?.let { group ->
                         categoryIds.getOrPut(group) {
@@ -362,6 +388,7 @@ class SyncRepository @Inject constructor(
                         name = entry.name,
                         logoUrl = entry.logoUrl,
                         urlOverride = entry.url,
+                        epgChannelId = EpgChannelKey.normalize(entry.tvgId),
                     )
                     if (buffer.size >= CHUNK) {
                         dao.insertChannels(buffer)
@@ -370,6 +397,9 @@ class SyncRepository @Inject constructor(
                 }
                 if (buffer.isNotEmpty()) dao.insertChannels(buffer)
             }
+            // The guide source lives in the playlist header, so each sync refreshes
+            // it (sealed — guide URLs can embed tokens). Cleared when it disappears.
+            db.playlistDao().updateEpgUrl(playlist.id, playlistSecrets.sealValue(discoveredGuideUrl))
         } finally {
             snapshot.delete()
         }

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -35,6 +36,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,7 +50,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import coil.compose.AsyncImage
+import com.novaplay.tv.R
 import com.novaplay.tv.data.db.LiveChannel
+import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.ui.components.EmptyState
 import com.novaplay.tv.ui.components.NovaClickable
@@ -56,6 +60,7 @@ import com.novaplay.tv.ui.components.ShimmerBox
 import com.novaplay.tv.ui.theme.catalogLayoutSpec
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
+import kotlinx.coroutines.flow.Flow
 
 /**
  * Adaptive Live browser used by phones, tablets, desktop-sized windows, and TV.
@@ -149,6 +154,7 @@ fun ResponsiveLiveScreen(
                                 ResponsiveChannelRow(
                                     channel = channel,
                                     bookmarked = channel.streamId in bookmarkedIds,
+                                    nowNextFlow = remember(channel.id) { viewModel.nowNext(channel) },
                                     rowHeightDp = layout.liveRowHeightDp,
                                     logoSizeDp = layout.liveLogoSizeDp,
                                     onClick = {
@@ -226,16 +232,19 @@ fun ResponsiveLiveScreen(
 /**
  * Channel entry sized by the current layout spec (row height and logo size).
  * OK/click plays the channel; long-press OK toggles the bookmark on remotes.
+ * A second line shows the airing (or upcoming) guide programme when known.
  */
 @Composable
 private fun ResponsiveChannelRow(
     channel: LiveChannel,
     bookmarked: Boolean,
+    nowNextFlow: Flow<EpgNowNext>,
     rowHeightDp: Int,
     logoSizeDp: Int,
     onClick: () -> Unit,
     onToggleBookmark: () -> Unit,
 ) {
+    val nowNext by nowNextFlow.collectAsStateWithLifecycle(EpgNowNext.EMPTY)
     NovaClickable(
         onClick = onClick,
         onLongClick = onToggleBookmark,
@@ -274,13 +283,25 @@ private fun ResponsiveChannelRow(
                 )
             }
             Spacer(Modifier.width(14.dp))
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = channel.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val programmeLine = nowNext.now?.title
+                    ?: nowNext.next?.let { stringResource(R.string.epg_next, it.title) }
+                if (programmeLine != null) {
+                    Text(
+                        text = programmeLine,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             LiveBookmarkButton(
                 bookmarked = bookmarked,
                 onToggle = onToggleBookmark,

@@ -62,6 +62,10 @@ interface PlaylistDao {
     /** Records when the catalogue was last synced, for staleness checks. */
     @Query("UPDATE playlists SET lastSyncEpochMs = :at WHERE id = :id")
     suspend fun updateLastSync(id: Long, at: Long)
+
+    /** Stores the guide source discovered from the M3U header; the value must already be sealed. */
+    @Query("UPDATE playlists SET epgUrl = :epgUrl WHERE id = :id")
+    suspend fun updateEpgUrl(id: Long, epgUrl: String?)
 }
 
 /**
@@ -162,6 +166,13 @@ interface LiveDao {
     /** Total channel count for one playlist (sync stats and empty-state checks). */
     @Query("SELECT COUNT(*) FROM live_channels WHERE playlistId = :playlistId")
     suspend fun channelCount(playlistId: Long): Int
+
+    /** Distinct guide keys of one playlist; guide installs skip programmes for channels not in this set. */
+    @Query(
+        """SELECT DISTINCT epgChannelId FROM live_channels
+           WHERE playlistId = :playlistId AND epgChannelId IS NOT NULL""",
+    )
+    suspend fun epgChannelKeys(playlistId: Long): List<String>
 
     /** Bulk-inserts categories, returning generated row ids so sync can link channels to them. */
     @Insert
@@ -379,6 +390,32 @@ interface BookmarkDao {
     /** Removes every bookmark of one playlist (used when the playlist is deleted or reset). */
     @Query("DELETE FROM bookmarks WHERE playlistId = :playlistId")
     suspend fun wipeForPlaylist(playlistId: Long)
+}
+
+/** Guide programmes: windowed now/next lookups plus transactional per-playlist replacement. */
+@Dao
+interface EpgDao {
+    // Now/next feed for one channel: the two earliest programmes still running or
+    // upcoming, start-ordered. EpgNowNextPolicy decides whether the first is airing.
+    @Query(
+        """SELECT * FROM epg_programmes
+           WHERE playlistId = :playlistId AND epgChannelId = :epgChannelId AND endMs > :nowMs
+           ORDER BY startMs LIMIT 2""",
+    )
+    fun observeUpcoming(playlistId: Long, epgChannelId: String, nowMs: Long): Flow<List<EpgProgramme>>
+
+    // Blocking bulk insert: guide installs stream SAX-parser batches inside one
+    // transaction, and SAX callbacks cannot suspend.
+    @Insert
+    fun insertAllBlocking(items: List<EpgProgramme>)
+
+    /** Clears a playlist's programmes ahead of a fresh guide install. */
+    @Query("DELETE FROM epg_programmes WHERE playlistId = :playlistId")
+    suspend fun wipeForPlaylist(playlistId: Long)
+
+    /** Programme count for one playlist (sync summary and diagnostics). */
+    @Query("SELECT COUNT(*) FROM epg_programmes WHERE playlistId = :playlistId")
+    suspend fun countForPlaylist(playlistId: Long): Int
 }
 
 /** "Recently viewed" history rows, one per (playlist, type, remote id). */

@@ -34,6 +34,7 @@ class PlaylistSecrets @Inject constructor(
         username = sealValue(playlist.username),
         password = sealValue(playlist.password),
         url = sealValue(playlist.url),
+        epgUrl = sealValue(playlist.epgUrl),
     )
 
     /**
@@ -45,6 +46,7 @@ class PlaylistSecrets @Inject constructor(
         username = openValue(playlist.username),
         password = openValue(playlist.password),
         url = openValue(playlist.url),
+        epgUrl = openValue(playlist.epgUrl),
     )
 
     /**
@@ -64,11 +66,14 @@ class PlaylistSecrets @Inject constructor(
         playlist.username,
         playlist.password,
         playlist.url,
+        playlist.epgUrl,
     ).any { value -> !value.isNullOrEmpty() && !value.startsWith(PREFIX) }
 
     // AES-GCM with a fresh random IV per value; stored as PREFIX + base64(iv || ciphertext).
-    // The prefix check up front is what makes sealing idempotent.
-    private fun sealValue(value: String?): String? {
+    // The prefix check up front is what makes sealing idempotent. Public so callers
+    // updating a single credential column (e.g. the discovered guide URL) can seal
+    // just that value without rewriting the whole row.
+    fun sealValue(value: String?): String? {
         if (value.isNullOrEmpty() || value.startsWith(PREFIX)) return value
 
         val cipher = Cipher.getInstance(TRANSFORMATION)

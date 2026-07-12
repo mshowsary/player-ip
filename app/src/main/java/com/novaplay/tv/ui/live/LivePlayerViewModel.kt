@@ -12,6 +12,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import com.novaplay.tv.data.db.LiveChannel
+import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.repo.ContentRepository
@@ -19,13 +20,20 @@ import com.novaplay.tv.ui.player.PlaybackRetryDecision
 import com.novaplay.tv.ui.player.PlaybackRetryPolicy
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -70,6 +78,23 @@ class LivePlayerViewModel @Inject constructor(
 
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
+
+    // Guide now/next for the playing channel, re-resolved on zap and rolled
+    // over by a minute tick so a long session never shows a stale programme.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val nowNext: StateFlow<EpgNowNext> = combine(
+        _uiState.map { it.channel }.distinctUntilChanged { old, new -> old?.id == new?.id },
+        flow {
+            while (true) {
+                emit(System.currentTimeMillis())
+                delay(GUIDE_TICK_MS)
+            }
+        },
+    ) { channel, now -> channel to now }
+        .flatMapLatest { (channel, now) ->
+            if (channel == null) flowOf(EpgNowNext.EMPTY) else contentRepository.nowNext(channel, now)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpgNowNext.EMPTY)
 
     private val liveFormat = prefs.liveFormat
 
@@ -410,5 +435,6 @@ class LivePlayerViewModel @Inject constructor(
         const val OVERLAY_HIDE_MS = 4_000L
         const val STALL_TIMEOUT_MS = 12_000L
         const val STABLE_PLAYBACK_RESET_MS = 5_000L
+        const val GUIDE_TICK_MS = 60_000L
     }
 }

@@ -218,11 +218,13 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * Re-checks portal activation to pull the latest managed access policy, mapping
-     * each outcome to a short status message that clears after a few seconds.
+     * Re-checks portal activation to pull the latest managed access policy. In a
+     * debug build this is also the deliberate action that exits a temporary policy
+     * preview; background mock refreshes do not overwrite the preview silently.
      */
     fun refreshManagedAccess() {
         viewModelScope.launch {
+            managedAccessRepository.clearDebugPreset()
             _managedRefreshMessage.value = "Checking managed access…"
             _managedRefreshMessage.value = when (val result = activationRepository.checkAndAttach()) {
                 is ActivationCheck.Activated -> "Managed access refreshed"

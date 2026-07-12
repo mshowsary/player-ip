@@ -57,4 +57,40 @@ object DatabaseMigrations {
             db.execSQL("ALTER TABLE `watch_progress_new` RENAME TO `watch_progress`")
         }
     }
+
+    /**
+     * v3 -> v4: EPG foundation. Purely additive — no existing rows are touched,
+     * so recovery is simply reinstalling the previous build over the same data.
+     * New columns start null and are filled by the next catalogue sync; the new
+     * programme table starts empty and is filled by the next guide refresh.
+     */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `playlists` ADD COLUMN `epgUrl` TEXT")
+            db.execSQL("ALTER TABLE `live_channels` ADD COLUMN `epgChannelId` TEXT")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `epg_programmes` (
+                    `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `playlistId` INTEGER NOT NULL,
+                    `epgChannelId` TEXT NOT NULL,
+                    `startMs` INTEGER NOT NULL,
+                    `endMs` INTEGER NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `description` TEXT,
+                    FOREIGN KEY(`playlistId`) REFERENCES `playlists`(`id`)
+                        ON UPDATE NO ACTION ON DELETE CASCADE
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_epg_programmes_playlistId_epgChannelId_startMs` " +
+                    "ON `epg_programmes` (`playlistId`, `epgChannelId`, `startMs`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_epg_programmes_playlistId_endMs` " +
+                    "ON `epg_programmes` (`playlistId`, `endMs`)",
+            )
+        }
+    }
 }

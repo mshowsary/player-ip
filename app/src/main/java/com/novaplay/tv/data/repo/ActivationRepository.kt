@@ -3,6 +3,7 @@ package com.novaplay.tv.data.repo
 import androidx.room.withTransaction
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.core.DeviceIdentity
+import com.novaplay.tv.core.PortalEndpointPolicy
 import com.novaplay.tv.data.db.NovaDatabase
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.remote.MockPortal
@@ -39,9 +40,8 @@ class ActivationRepository @Inject constructor(
 
     /**
      * Queries the portal for this device's assignment and attaches the returned
-     * playlists plus access policy. Network errors are reported as
-     * [ActivationCheck.Failure] rather than thrown; 404/403 map to
-     * NotRegistered/KeyMismatch so the UI can guide the user.
+     * playlists plus access policy. Network and configuration errors are
+     * reported as [ActivationCheck.Failure] rather than thrown.
      */
     suspend fun checkAndAttach(): ActivationCheck {
         if (BuildConfig.MOCK_ACTIVATION) {
@@ -66,6 +66,11 @@ class ActivationRepository @Inject constructor(
             )
         }
 
+        val endpoint = PortalEndpointPolicy.assess(BuildConfig.PORTAL_BASE_URL, BuildConfig.DEBUG)
+        if (!endpoint.configured || !endpoint.transportAllowed) {
+            return ActivationCheck.Failure(endpoint.issue ?: "Provider portal is unavailable")
+        }
+
         // Temporary migration path for the existing portal contract. This will
         // be removed after the pairing UI and server are deployed together.
         val identity = deviceIdentity.get()
@@ -88,7 +93,12 @@ class ActivationRepository @Inject constructor(
                 }
             }
             response.code() == 404 -> ActivationCheck.NotRegistered
-            response.code() == 403 -> ActivationCheck.KeyMismatch
+            response.code() == 403 -> {
+                managedAccessRepository.markSessionRevoked(
+                    "The legacy portal key is no longer authorized. Pair this device again.",
+                )
+                ActivationCheck.KeyMismatch
+            }
             else -> ActivationCheck.Failure("Portal error: HTTP ${response.code()}")
         }
     }

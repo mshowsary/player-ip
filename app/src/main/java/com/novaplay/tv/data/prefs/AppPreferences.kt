@@ -97,6 +97,7 @@ data class LastSyncSummary(
     val liveChannels: Int = 0,
     val movies: Int = 0,
     val series: Int = 0,
+    val epgProgrammes: Int = 0,
     val error: String? = null,
 ) {
     val exists: Boolean get() = completedAtEpochMs > 0L
@@ -137,6 +138,7 @@ class AppPreferences @Inject constructor(
         val LAST_SYNC_LIVE = intPreferencesKey("last_sync_live")
         val LAST_SYNC_MOVIES = intPreferencesKey("last_sync_movies")
         val LAST_SYNC_SERIES = intPreferencesKey("last_sync_series")
+        val LAST_SYNC_EPG = intPreferencesKey("last_sync_epg")
         val LAST_SYNC_ERROR = stringPreferencesKey("last_sync_error")
     }
 
@@ -260,6 +262,7 @@ class AppPreferences @Inject constructor(
                 liveChannels = prefs[Keys.LAST_SYNC_LIVE] ?: 0,
                 movies = prefs[Keys.LAST_SYNC_MOVIES] ?: 0,
                 series = prefs[Keys.LAST_SYNC_SERIES] ?: 0,
+                epgProgrammes = prefs[Keys.LAST_SYNC_EPG] ?: 0,
                 error = prefs[Keys.LAST_SYNC_ERROR],
             )
         }
@@ -279,6 +282,7 @@ class AppPreferences @Inject constructor(
             prefs[Keys.LAST_SYNC_LIVE] = summary.liveChannels
             prefs[Keys.LAST_SYNC_MOVIES] = summary.movies
             prefs[Keys.LAST_SYNC_SERIES] = summary.series
+            prefs[Keys.LAST_SYNC_EPG] = summary.epgProgrammes
             summary.error.storeOrRemove(prefs, Keys.LAST_SYNC_ERROR)
         }
     }

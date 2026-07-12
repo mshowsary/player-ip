@@ -2,4 +2,56 @@
 <resources>
     <!-- Single source of truth for the product name; rename here + Gradle namespace. -->
     <string name="app_name">NovaPlay</string>
+
+    <string name="nav_home">Home</string>
+    <string name="nav_live">Live</string>
+    <string name="nav_movies">Movies</string>
+    <string name="nav_series">Series</string>
+    <string name="nav_settings">Settings</string>
+
+    <string name="home_live_tv">Live TV</string>
+    <string name="home_movies">Movies</string>
+    <string name="home_series">Series</string>
+    <string name="home_playlists">Playlists</string>
+    <string name="home_settings">Settings</string>
+    <string name="home_expires">expires %1$s</string>
+    <string name="home_syncing">Syncing %1$s…</string>
+    <string name="home_last_sync_failed">Last sync failed — content may be out of date</string>
+
+    <string name="managed_status_personal">Personal access</string>
+    <string name="managed_status_active">Managed access active</string>
+    <string name="managed_status_paused">Managed access paused</string>
+    <string name="managed_status_revoked">Managed access revoked</string>
+    <string name="managed_no_services">No managed streaming services are currently available.</string>
+    <string name="managed_available_services">Available services: %1$s</string>
+    <string name="service_live">Live</string>
+    <string name="service_movies">Movies</string>
+    <string name="service_series">Series</string>
+    <string name="blocked_live_title">Live TV is unavailable</string>
+    <string name="blocked_movies_title">Movies are unavailable</string>
+    <string name="blocked_series_title">Series are unavailable</string>
+    <string name="blocked_default_message">This service is not currently included in the managed access assigned to this device.</string>
+    <string name="support_code">Support code: %1$s</string>
+
+    <string name="action_retry">Retry</string>
+    <string name="action_open_playlists">Open playlists</string>
+    <string name="action_view_managed_access">View managed access</string>
+    <string name="action_add_bookmark">Add bookmark</string>
+    <string name="action_remove_bookmark">Remove bookmark</string>
+    <string name="state_bookmarked">Bookmarked</string>
+    <string name="state_not_bookmarked">Not bookmarked</string>
+
+    <string name="epg_next">Next: %1$s</string>
+
+    <string name="error_offline">No internet connection. Check your connection and try again.</string>
+    <string name="error_timeout">The request took too long. Try again.</string>
+    <string name="error_unauthorized">Your access is no longer authorized. Refresh managed access or contact your provider.</string>
+    <string name="error_not_found">The requested content is no longer available.</string>
+    <string name="error_rate_limited">Too many requests were sent. Wait a moment and try again.</string>
+    <string name="error_provider_unavailable">The provider service is temporarily unavailable. Try again later.</string>
+    <string name="error_storage">There is not enough free storage to complete this operation.</string>
+    <string name="error_unsupported_media">This video format is not supported on this device.</string>
+    <string name="error_configuration">Provider access is not configured correctly. Contact your provider.</string>
+    <string name="error_content_unavailable">This content is currently unavailable. Try again later.</string>
+    <string name="error_unknown">Something went wrong. Try again.</string>
 </resources>

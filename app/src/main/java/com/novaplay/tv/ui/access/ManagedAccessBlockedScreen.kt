@@ -22,12 +22,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.novaplay.tv.R
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedAccessState
 import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.theme.isCompactWidth
@@ -37,7 +40,7 @@ import com.novaplay.tv.ui.theme.screenPadding
 /**
  * Full-screen notice shown when the managed policy blocks the device or the
  * requested feature (Live/Movies/Series). Shows the policy message and support
- * code when present; on TV, initial focus lands on the "Open playlists" button.
+ * code when present; on TV, initial focus lands on the Open playlists button.
  */
 @Composable
 fun ManagedAccessBlockedScreen(
@@ -86,8 +89,7 @@ fun ManagedAccessBlockedScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = policy.message
-                    ?: "This service is not currently included in the managed access assigned to this device.",
+                text = policy.message ?: stringResource(R.string.blocked_default_message),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -95,7 +97,7 @@ fun ManagedAccessBlockedScreen(
             policy.supportCode?.let { supportCode ->
                 Spacer(Modifier.height(10.dp))
                 Text(
-                    text = "Support code: $supportCode",
+                    text = stringResource(R.string.support_code, supportCode),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary,
                 )
@@ -108,7 +110,7 @@ fun ManagedAccessBlockedScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     NovaButton(
-                        text = "Open playlists",
+                        text = stringResource(R.string.action_open_playlists),
                         onClick = onOpenPlaylists,
                         prominent = true,
                         modifier = Modifier
@@ -116,7 +118,7 @@ fun ManagedAccessBlockedScreen(
                             .focusRequester(firstFocus),
                     )
                     NovaButton(
-                        text = "View managed access",
+                        text = stringResource(R.string.action_view_managed_access),
                         onClick = onOpenSettings,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -124,13 +126,13 @@ fun ManagedAccessBlockedScreen(
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     NovaButton(
-                        text = "Open playlists",
+                        text = stringResource(R.string.action_open_playlists),
                         onClick = onOpenPlaylists,
                         prominent = true,
                         modifier = Modifier.focusRequester(firstFocus),
                     )
                     NovaButton(
-                        text = "View managed access",
+                        text = stringResource(R.string.action_view_managed_access),
                         onClick = onOpenSettings,
                     )
                 }
@@ -139,13 +141,23 @@ fun ManagedAccessBlockedScreen(
     }
 }
 
-// Device-wide blocks use the policy's own status label; otherwise name the
-// specific feature that is unavailable.
+@Composable
 private fun blockedTitle(feature: ManagedFeature, policy: ManagedAccessPolicy): String {
-    if (policy.isBlocked) return policy.statusLabel()
-    return when (feature) {
-        ManagedFeature.LIVE -> "Live TV is unavailable"
-        ManagedFeature.MOVIES -> "Movies are unavailable"
-        ManagedFeature.SERIES -> "Series are unavailable"
+    if (policy.isBlocked) {
+        return stringResource(
+            when (policy.state) {
+                ManagedAccessState.UNMANAGED -> R.string.managed_status_personal
+                ManagedAccessState.ACTIVE -> R.string.managed_status_active
+                ManagedAccessState.SUSPENDED -> R.string.managed_status_paused
+                ManagedAccessState.REVOKED -> R.string.managed_status_revoked
+            },
+        )
     }
+    return stringResource(
+        when (feature) {
+            ManagedFeature.LIVE -> R.string.blocked_live_title
+            ManagedFeature.MOVIES -> R.string.blocked_movies_title
+            ManagedFeature.SERIES -> R.string.blocked_series_title
+        },
+    )
 }

@@ -12,7 +12,7 @@ import retrofit2.http.Query
 
 /**
  * One playlist entitlement granted to this device — either Xtream credentials
- * (server/username/password) or a direct M3U url, mirroring the Playlist entity.
+ * (server/username/password) or a direct M3U URL, mirroring the Playlist entity.
  */
 @Serializable
 data class PortalPlaylistDto(
@@ -114,26 +114,26 @@ data class DeviceTokenDto(
  * treating every non-2xx as an exception.
  */
 interface PortalApi {
-    /** Starts device-code pairing; the returned userCode is shown on-screen for the user to enter on the portal. */
+    /** Starts device-code pairing; the returned user code is shown on-screen. */
     @POST("api/v1/pairing/sessions")
     suspend fun createPairingSession(
         @Body request: CreatePairingSessionRequest,
     ): Response<PairingSessionDto>
 
-    /** Polls a pairing session, authenticated by the high-entropy session secret rather than the guessable user code. */
+    /** Polls with the high-entropy session secret rather than the guessable code. */
     @GET("api/v1/pairing/sessions/{sessionId}")
     suspend fun getPairingStatus(
         @Path("sessionId") sessionId: String,
         @Header("X-Pairing-Secret") sessionSecret: String,
     ): Response<PairingStatusDto>
 
-    /** Fetches entitlements and policy for an already-paired device; authorization carries the Bearer access token. */
+    /** Fetches entitlements and policy for an already-paired device. */
     @GET("api/v1/device/playlists")
     suspend fun getAuthorizedPlaylists(
         @Header("Authorization") authorization: String,
     ): Response<PortalPlaylistsResponse>
 
-    /** Renews the device access token from the refresh token when the current one expires. */
+    /** Renews the device access token when the current one expires. */
     @POST("api/v1/device/token/refresh")
     suspend fun refreshDeviceToken(
         @Body request: RefreshDeviceTokenRequest,
@@ -146,34 +146,4 @@ interface PortalApi {
         @Path("mac") mac: String,
         @Query("key") deviceKey: String,
     ): Response<PortalPlaylistsResponse>
-}
-
-// Debug-only stand-in until the real portal exists (BuildConfig.MOCK_ACTIVATION).
-object MockPortal {
-    val policy = PortalPolicyDto(
-        status = "active",
-        allowLive = true,
-        allowMovies = true,
-        allowSeries = true,
-        message = "Managed services are active on this device.",
-        supportCode = "MOCK-ACTIVE",
-        revision = 1L,
-    )
-
-    val playlists = listOf(
-        PortalPlaylistDto(
-            id = 1,
-            name = "Kappa",
-            type = "xtream",
-            server = "http://kappa.cloudf-nexon.xyz:80",
-            username = "uhhclvm2rd",
-            password = "130lz954yd",
-        ),
-        PortalPlaylistDto(
-            id = 2,
-            name = "Kappa M3U",
-            type = "m3u",
-            url = "http://kappa.cloudf-nexon.xyz:80/get.php?username=uhhclvm2rd&password=130lz954yd&type=m3u_plus&output=mpegts",
-        ),
-    )
 }

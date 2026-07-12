@@ -17,14 +17,22 @@
         android:name=".NovaPlayApp"
         android:allowBackup="false"
         android:banner="@drawable/tv_banner"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:resizeableActivity="true"
         android:supportsRtl="true"
         android:theme="@style/Theme.NovaPlay"
         android:usesCleartextTraffic="true"
-        tools:targetApi="31">
+        tools:targetApi="33">
 
+        <!--
+          Cleartext remains available only for user-supplied IPTV sources that
+          still require HTTP. Provider control-plane traffic is independently
+          restricted to the configured HTTPS host by PortalRequestGuard.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"

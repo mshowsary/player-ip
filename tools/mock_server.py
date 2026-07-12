@@ -3,10 +3,11 @@
 
 Serves on 0.0.0.0:8899 (emulator reaches it via 10.0.2.2:8899).
 - /player_api.php           Xtream API (user info, categories, streams, details)
+- /xmltv.php                XMLTV guide rolling around the current time
 - /live/u/p/{id}.m3u8       404 on purpose -> exercises HLS->TS fallback
 - /live/u/p/{id}.ts         test MP4 bytes (ExoPlayer sniffs MP4 fine)
 - /movie|series/u/p/{id}.*  test MP4
-- /list.m3u                 M3U playlist with direct URLs
+- /list.m3u                 M3U playlist with direct URLs (url-tvg -> /xmltv.php)
 - /direct/{n}.mp4           test MP4
 Supports HTTP Range so ExoPlayer can seek.
 """
@@ -27,15 +28,34 @@ LIVE_CATEGORIES = [
 ]
 
 LIVE_STREAMS = [
-    {"stream_id": 101, "num": 1, "name": "France 24", "category_id": "10", "stream_icon": ""},
-    {"stream_id": 102, "num": "2", "name": "BBC World News", "category_id": "10", "stream_icon": ""},
-    {"stream_id": 103, "num": 3, "name": "Al Jazeera", "category_id": "10", "stream_icon": ""},
-    {"stream_id": 201, "num": 4, "name": "Bein Sports 1", "category_id": "20", "stream_icon": ""},
+    # epg_channel_id casing deliberately differs from the XMLTV ids below to
+    # exercise the app's case-insensitive guide matching.
+    {"stream_id": 101, "num": 1, "name": "France 24", "category_id": "10",
+     "stream_icon": "", "epg_channel_id": "France24.EN"},
+    {"stream_id": 102, "num": "2", "name": "BBC World News", "category_id": "10",
+     "stream_icon": "", "epg_channel_id": "bbcworld.uk"},
+    {"stream_id": 103, "num": 3, "name": "Al Jazeera", "category_id": "10",
+     "stream_icon": "", "epg_channel_id": "aljazeera.qa"},
+    {"stream_id": 201, "num": 4, "name": "Bein Sports 1", "category_id": "20",
+     "stream_icon": "", "epg_channel_id": "beinsports1.qa"},
+    # no epg_channel_id -> channel must render without a guide line
     {"stream_id": 202, "num": 5, "name": "Eurosport", "category_id": "20", "stream_icon": ""},
-    {"stream_id": 301, "num": 6, "name": "Télé Maroc", "category_id": "30", "stream_icon": ""},
-    {"stream_id": 302, "num": 7, "name": "2M Monde", "category_id": "30", "stream_icon": ""},
+    {"stream_id": 301, "num": 6, "name": "Télé Maroc", "category_id": "30",
+     "stream_icon": "", "epg_channel_id": "telemaroc.ma"},
+    {"stream_id": 302, "num": 7, "name": "2M Monde", "category_id": "30",
+     "stream_icon": "", "epg_channel_id": "2mmonde.ma"},
     # dirty entry: no name -> must be skipped, never fatal
     {"stream_id": 999, "num": 99, "category_id": "30"},
+]
+
+# XMLTV ids served by /xmltv.php: the Xtream channels above (lowercase, to prove
+# normalization) plus the M3U tvg-ids, plus one foreign channel the playlist does
+# not contain -> its programmes must be filtered out during install.
+EPG_CHANNELS = [
+    "france24.en", "bbcworld.uk", "aljazeera.qa", "beinsports1.qa",
+    "telemaroc.ma", "2mmonde.ma",
+    "d1", "d2", "d3",
+    "not-in-playlist.xx",
 ]
 
 VOD_CATEGORIES = [
@@ -79,7 +99,7 @@ SERIES_INFO = {
     },
 }
 
-M3U = """#EXTM3U
+M3U = """#EXTM3U url-tvg="http://10.0.2.2:8899/xmltv.php"
 #EXTINF:-1 tvg-id="d1" tvg-name="Direct One" tvg-logo="" group-title="Direct",Direct One
 http://10.0.2.2:8899/direct/1.mp4
 #EXTINF:-1 tvg-id="d2" tvg-name="Direct Two" tvg-logo="" group-title="Direct",Direct Two
@@ -87,6 +107,31 @@ http://10.0.2.2:8899/direct/2.mp4
 #EXTINF:-1 tvg-id="d3" tvg-name="Chaîne Française" group-title="Français",Chaîne Française
 http://10.0.2.2:8899/direct/3.mp4
 """
+
+
+def build_xmltv():
+    """Rolling half-hour schedule from 2 h in the past to 8 h ahead per channel,
+    so 'now' always lands inside a programme regardless of when tests run."""
+    half_hour = 1800
+    start = (int(time.time()) // half_hour - 4) * half_hour
+    slots = 20
+    out = ['<?xml version="1.0" encoding="UTF-8"?>', '<tv generator-info-name="novaplay-mock">']
+    for chan in EPG_CHANNELS:
+        out.append(f'  <channel id="{chan}"><display-name>{chan}</display-name></channel>')
+    for chan in EPG_CHANNELS:
+        for slot in range(slots):
+            begin = start + slot * half_hour
+            end = begin + half_hour
+            begin_s = time.strftime("%Y%m%d%H%M%S", time.gmtime(begin))
+            end_s = time.strftime("%Y%m%d%H%M%S", time.gmtime(end))
+            out.append(
+                f'  <programme start="{begin_s} +0000" stop="{end_s} +0000" channel="{chan}">'
+                f'<title lang="en">Programme {slot + 1} on {chan}</title>'
+                f'<desc lang="en">Mock guide entry {slot + 1} for {chan}.</desc>'
+                f'</programme>'
+            )
+    out.append('</tv>')
+    return "\n".join(out).encode()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -180,6 +225,13 @@ class Handler(BaseHTTPRequestHandler):
                 }})
             else:
                 self.send_json([])
+        elif path == "/xmltv.php":
+            body = build_xmltv()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/xml")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
         elif path == "/list.m3u":
             body = M3U.encode()
             self.send_response(200)
