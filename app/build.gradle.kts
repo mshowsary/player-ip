@@ -9,6 +9,16 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+fun String.asBuildConfigString(): String =
+    "\"" + replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val configuredPortalBaseUrl = providers.gradleProperty("novaplayPortalBaseUrl")
+    .orElse(providers.environmentVariable("NOVAPLAY_PORTAL_BASE_URL"))
+    .orElse("https://portal.example.com")
+    .get()
+val portalConfigured = !configuredPortalBaseUrl.contains("portal.example.com", ignoreCase = true) &&
+    !configuredPortalBaseUrl.contains("example.invalid", ignoreCase = true)
+
 android {
     namespace = "com.novaplay.tv"
     compileSdk = 35
@@ -20,17 +30,20 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        buildConfigField("String", "PORTAL_BASE_URL", "\"https://portal.example.com\"")
+        buildConfigField("String", "PORTAL_BASE_URL", configuredPortalBaseUrl.asBuildConfigString())
+        buildConfigField("boolean", "PORTAL_CONFIGURED", portalConfigured.toString())
     }
 
     buildTypes {
         debug {
             buildConfigField("boolean", "MOCK_ACTIVATION", "true")
+            buildConfigField("String", "BUILD_CHANNEL", "\"debug\"")
         }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             buildConfigField("boolean", "MOCK_ACTIVATION", "false")
+            buildConfigField("String", "BUILD_CHANNEL", "\"production\"")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

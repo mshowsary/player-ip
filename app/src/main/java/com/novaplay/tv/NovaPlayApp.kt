@@ -2,6 +2,7 @@ package com.novaplay.tv
 
 import android.app.ActivityManager
 import android.app.Application
+import android.os.StrictMode
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -15,7 +16,8 @@ import javax.inject.Inject
 
 /**
  * Application entry point: hosts the Hilt graph, reconciles the background sync
- * schedule at startup, and supplies the app-wide Coil image loader.
+ * schedule at startup, supplies the app-wide Coil image loader, and enables
+ * non-fatal leak/network diagnostics in debug builds.
  */
 @HiltAndroidApp
 class NovaPlayApp : Application(), ImageLoaderFactory {
@@ -30,9 +32,29 @@ class NovaPlayApp : Application(), ImageLoaderFactory {
     /** Standard startup plus async WorkManager reconciliation, kept off the main thread. */
     override fun onCreate() {
         super.onCreate()
+        if (BuildConfig.DEBUG) enableDebugStrictMode()
         // WorkManager reconciliation is not part of the first rendered frame.
         // It runs after Hilt initialization on the process-lifetime scope.
         applicationScope.launch { backgroundSyncScheduler.reconcile() }
+    }
+
+    /** Logs development regressions without crashing the user's test build. */
+    private fun enableDebugStrictMode() {
+        // Disk checks are intentionally omitted because Room/Coil initialize
+        // small local resources around startup and would create noisy reports.
+        StrictMode.setThreadPolicy(
+            StrictMode.ThreadPolicy.Builder()
+                .detectNetwork()
+                .penaltyLog()
+                .build(),
+        )
+        StrictMode.setVmPolicy(
+            StrictMode.VmPolicy.Builder()
+                .detectActivityLeaks()
+                .detectLeakedClosableObjects()
+                .penaltyLog()
+                .build(),
+        )
     }
 
     // Provider catalogues can contain tens of thousands of logos and posters.

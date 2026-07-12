@@ -7,6 +7,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 import androidx.sqlite.db.SimpleSQLiteQuery
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.core.PortalEndpointPolicy
 import com.novaplay.tv.data.db.NovaDatabase
 import com.novaplay.tv.data.prefs.BackgroundSyncMode
 import com.novaplay.tv.data.prefs.LastSyncSummary
@@ -20,7 +21,7 @@ import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Point-in-time device and catalogue health snapshot shown on the support screen. */
+/** Point-in-time privacy-safe device, catalogue, build and security snapshot. */
 data class AppDiagnostics(
     val generatedAtEpochMs: Long = 0L,
     val androidVersion: String = "",
@@ -36,27 +37,28 @@ data class AppDiagnostics(
     val liveChannels: Int = 0,
     val movies: Int = 0,
     val series: Int = 0,
+    val buildChannel: String = "",
+    val portalSecurityStatus: String = "Unknown",
+    val backupStatus: String = "Disabled",
+    val httpPlaylistCompatibility: Boolean = true,
 )
 
 /**
  * Collects privacy-safe diagnostics for user support. Nothing produced here may
- * contain playlist URLs, credentials, tokens, MAC addresses or device ids —
- * only aggregate counts, sizes and coarse device/network labels.
+ * contain playlist URLs, credentials, tokens, portal hosts, MAC addresses or
+ * device ids — only aggregate counts, sizes and coarse device/network labels.
  */
 @Singleton
 class AppDiagnosticsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val db: NovaDatabase,
 ) {
-    /**
-     * Gathers the current snapshot on Dispatchers.IO: device traits, database
-     * and cache footprints, network class, and per-type catalogue counts for
-     * the active playlist only.
-     */
+    /** Gathers device traits, local footprints, network class and catalogue counts on IO. */
     suspend fun snapshot(): AppDiagnostics = withContext(Dispatchers.IO) {
         val activityManager = context.getSystemService(ActivityManager::class.java)
         val active = db.playlistDao().getActive()
         val playlistId = active?.id
+        val portalAssessment = PortalEndpointPolicy.assess(BuildConfig.PORTAL_BASE_URL, BuildConfig.DEBUG)
 
         AppDiagnostics(
             generatedAtEpochMs = System.currentTimeMillis(),
@@ -76,13 +78,21 @@ class AppDiagnosticsRepository @Inject constructor(
             liveChannels = playlistId?.let { count("live_channels", it) } ?: 0,
             movies = playlistId?.let { count("movies", it) } ?: 0,
             series = playlistId?.let { count("series", it) } ?: 0,
+            buildChannel = BuildConfig.BUILD_CHANNEL.replaceFirstChar { it.uppercase() },
+            portalSecurityStatus = when {
+                BuildConfig.MOCK_ACTIVATION -> "Debug mock · not included in release"
+                portalAssessment.configured && portalAssessment.transportAllowed -> "HTTPS configured"
+                portalAssessment.transportAllowed -> "Not configured"
+                else -> "Blocked unsafe configuration"
+            },
+            backupStatus = "Disabled for app data and device transfer",
+            httpPlaylistCompatibility = true,
         )
     }
 
     /**
-     * Renders the snapshot plus sync history as shareable plain text. Keep the
-     * output free of identifiers and secrets; the closing line is a promise to
-     * the user that must stay true.
+     * Renders the snapshot plus sync history as shareable plain text. The output
+     * deliberately excludes all identifiers, credentials, URLs and portal hosts.
      */
     fun supportText(
         diagnostics: AppDiagnostics,
@@ -91,6 +101,9 @@ class AppDiagnosticsRepository @Inject constructor(
     ): String = buildString {
         appendLine("NovaPlay support diagnostics")
         appendLine("App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        appendLine("Build channel: ${diagnostics.buildChannel}")
+        appendLine("Portal control plane: ${diagnostics.portalSecurityStatus}")
+        appendLine("Application-data backup: ${diagnostics.backupStatus}")
         appendLine("Generated: ${formatDateTime(diagnostics.generatedAtEpochMs)}")
         appendLine("Device: ${diagnostics.deviceModel}")
         appendLine("System: ${diagnostics.androidVersion}")
@@ -123,8 +136,7 @@ class AppDiagnosticsRepository @Inject constructor(
         append("No playlist URLs, usernames, passwords, tokens or device identifiers are included.")
     }
 
-    // Raw COUNT(*) so one helper covers every catalogue table; blocking, so
-    // only called from the IO context of snapshot().
+    // Raw COUNT(*) so one helper covers every catalogue table; only called on IO.
     private fun count(table: String, playlistId: Long): Int {
         val query = SimpleSQLiteQuery(
             "SELECT COUNT(*) FROM $table WHERE playlistId = ?",
@@ -152,8 +164,7 @@ class AppDiagnosticsRepository @Inject constructor(
         else -> file.listFiles()?.sumOf(::directorySize) ?: 0L
     }
 
-    // Coarse transport + metered label ("Wi-Fi (unmetered)"); deliberately no
-    // SSID or addresses, which would identify the user.
+    // Coarse transport + metered label; deliberately excludes SSIDs and addresses.
     private fun networkLabel(): String {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return "Unknown"
         val network = manager.activeNetwork ?: return "Offline"
@@ -180,7 +191,7 @@ class AppDiagnosticsRepository @Inject constructor(
             return "%.1f GB".format(Locale.US, mb / 1_024.0)
         }
 
-        /** Human-readable duration, switching units at 1 s and 1 min. */
+        /** Human-readable duration, switching units at 1 second and 1 minute. */
         fun formatDuration(durationMs: Long): String = when {
             durationMs < 1_000L -> "${durationMs} ms"
             durationMs < 60_000L -> "%.1f s".format(Locale.US, durationMs / 1_000.0)

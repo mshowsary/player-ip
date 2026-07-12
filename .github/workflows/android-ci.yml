@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Check out repository
@@ -32,11 +32,20 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Build, test, and lint
+      - name: Build, test, and lint debug and release
         shell: bash
+        env:
+          NOVAPLAY_PORTAL_BASE_URL: https://portal.ci.invalid
         run: |
           set -o pipefail
-          ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug --console=plain --quiet --stacktrace 2>&1 | tee build.log
+          ./gradlew \
+            :app:testDebugUnitTest \
+            :app:testReleaseUnitTest \
+            :app:assembleDebug \
+            :app:assembleRelease \
+            :app:lintDebug \
+            :app:lintRelease \
+            --console=plain --quiet --stacktrace 2>&1 | tee build.log
 
       - name: Upload build log
         if: always()
@@ -53,6 +62,15 @@ jobs:
         with:
           name: novaplay-debug
           path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload unsigned release APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaplay-release-unsigned
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
           retention-days: 7
 

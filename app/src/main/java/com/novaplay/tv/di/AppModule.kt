@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.core.PortalEndpointPolicy
+import com.novaplay.tv.core.PortalRequestGuard
 import com.novaplay.tv.data.db.DatabaseMigrations
 import com.novaplay.tv.data.db.NovaDatabase
 import com.novaplay.tv.data.remote.PortalApi
@@ -30,24 +32,18 @@ import javax.inject.Singleton
 @Retention(AnnotationRetention.BINARY)
 annotation class ApplicationScope
 
-/** Process-wide infrastructure: coroutine scope, JSON codec, HTTP stack, and Room. */
+/** Process-wide infrastructure: coroutine scope, JSON codec, HTTP stacks, and Room. */
 @Module
 @InstallIn(SingletonComponent::class)
 object AppModule {
 
-    /**
-     * Provides the process-lifetime scope. SupervisorJob keeps one failed child (e.g. a
-     * sync) from cancelling unrelated background work; Default suits CPU-bound parsing.
-     */
+    /** SupervisorJob prevents one failed background task from cancelling the rest. */
     @Provides
     @Singleton
     @ApplicationScope
     fun applicationScope(): CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    /**
-     * Provides the shared Json codec, configured to survive dirty Xtream panel output:
-     * unknown keys, quoted numbers, and wrong-typed values must not fail a whole response.
-     */
+    /** Shared lenient JSON codec for inconsistent provider payloads. */
     @Provides
     @Singleton
     fun json(): Json = Json {
@@ -56,10 +52,7 @@ object AppModule {
         coerceInputValues = true
     }
 
-    /**
-     * Provides the single OkHttp client shared by both Retrofit APIs (one connection
-     * pool). The 45s read timeout accommodates slow panels serving large catalogues.
-     */
+    /** General client for provider streams and user-supplied playlist sources. */
     @Provides
     @Singleton
     fun okHttpClient(): OkHttpClient = OkHttpClient.Builder()
@@ -68,18 +61,30 @@ object AppModule {
         .build()
 
     /**
-     * Provides the first-party portal API at the build-time base URL; the trailing-slash
-     * normalization keeps Retrofit's relative-path resolution correct for any config value.
+     * Dedicated portal client bound to the configured authority. Redirects are
+     * disabled so bearer tokens cannot move to another host or unsafe scheme.
      */
     @Provides
     @Singleton
-    fun portalApi(client: OkHttpClient, json: Json): PortalApi =
-        Retrofit.Builder()
-            .baseUrl(BuildConfig.PORTAL_BASE_URL.trimEnd('/') + "/")
-            .client(client)
+    fun portalApi(client: OkHttpClient, json: Json): PortalApi {
+        val configuredBase = BuildConfig.PORTAL_BASE_URL.trimEnd('/')
+        val assessment = PortalEndpointPolicy.assess(configuredBase, BuildConfig.DEBUG)
+        // Invalid configuration must not crash personal-playlist mode. Repository
+        // calls fail with a readable configuration message before network I/O.
+        val safeBase = if (assessment.transportAllowed) configuredBase else "https://portal.invalid"
+        val portalClient = client.newBuilder()
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .addInterceptor(PortalRequestGuard(safeBase, BuildConfig.DEBUG))
+            .build()
+
+        return Retrofit.Builder()
+            .baseUrl(safeBase.trimEnd('/') + "/")
+            .client(portalClient)
             .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
             .build()
             .create(PortalApi::class.java)
+    }
 
     // Xtream servers are per-playlist; every call passes a full @Url, so the
     // base URL here is a never-used placeholder.
@@ -92,11 +97,7 @@ object AppModule {
             .build()
             .create(XtreamRawApi::class.java)
 
-    /**
-     * Provides the Room database. WAL lets catalogue writes proceed without blocking
-     * readers during sync; migrations are explicit — no destructive fallback, so a
-     * missing migration fails fast instead of silently wiping user data.
-     */
+    /** WAL keeps catalogue reads responsive during sync; migrations are non-destructive. */
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): NovaDatabase =
