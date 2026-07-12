@@ -19,7 +19,6 @@ data class PortalEndpointAssessment(
  * control plane is a separate trust boundary and must use HTTPS in production.
  */
 object PortalEndpointPolicy {
-    private val placeholderHosts = setOf("portal.example.com", "example.invalid")
     private val localDebugHosts = setOf("localhost", "127.0.0.1", "10.0.2.2", "::1")
 
     fun assess(rawBaseUrl: String, debug: Boolean): PortalEndpointAssessment {
@@ -48,7 +47,10 @@ object PortalEndpointPolicy {
             )
         }
 
-        val configured = host !in placeholderHosts
+        // Reserved documentation/testing domains must never make a production
+        // artifact appear portal-ready. Local loopback hosts remain usable only
+        // through the explicit debug transport exception above.
+        val configured = !isReservedPlaceholderHost(host)
         return PortalEndpointAssessment(
             configured = configured,
             transportAllowed = true,
@@ -62,6 +64,17 @@ object PortalEndpointPolicy {
         require(assessment.transportAllowed && assessment.configured) {
             assessment.issue ?: "Provider portal is unavailable"
         }
+    }
+
+    internal fun isReservedPlaceholderHost(host: String): Boolean {
+        val normalized = host.lowercase().trimEnd('.')
+        return normalized == "localhost" ||
+            normalized == "example.com" || normalized.endsWith(".example.com") ||
+            normalized == "example.net" || normalized.endsWith(".example.net") ||
+            normalized == "example.org" || normalized.endsWith(".example.org") ||
+            normalized == "invalid" || normalized.endsWith(".invalid") ||
+            normalized == "test" || normalized.endsWith(".test") ||
+            normalized == "example" || normalized.endsWith(".example")
     }
 
     private fun invalid(message: String) = PortalEndpointAssessment(
