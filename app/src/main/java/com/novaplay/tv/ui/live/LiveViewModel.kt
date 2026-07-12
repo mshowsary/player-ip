@@ -7,6 +7,7 @@ import androidx.paging.cachedIn
 import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.LiveCategory
 import com.novaplay.tv.data.db.LiveChannel
+import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.repo.ContentRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,6 +28,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -137,6 +139,25 @@ class LiveViewModel @Inject constructor(
         _searchQuery.value = query
     }
 
+    // --- EPG now/next ---
+
+    // Shared minute tick so every visible row rolls its "now" programme over
+    // together without a resync; WhileSubscribed stops it off-screen.
+    private val guideTick: StateFlow<Long> = flow {
+        while (true) {
+            emit(System.currentTimeMillis())
+            delay(GUIDE_TICK_MS)
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), System.currentTimeMillis())
+
+    /**
+     * Now/next guide info for one channel row. Each visible row collects its own
+     * flow — a cheap indexed two-row query — instead of loading the whole
+     * playlist's guide into memory.
+     */
+    fun nowNext(channel: LiveChannel): Flow<EpgNowNext> =
+        guideTick.flatMapLatest { now -> contentRepository.nowNext(channel, now) }
+
     // --- digit jump ---
 
     private val _digitBuffer = MutableStateFlow("")
@@ -170,5 +191,6 @@ class LiveViewModel @Inject constructor(
 
     private companion object {
         const val DIGIT_COMMIT_MS = 1_400L
+        const val GUIDE_TICK_MS = 60_000L
     }
 }

@@ -40,6 +40,8 @@
     <string name="state_bookmarked">ضمن المفضلة</string>
     <string name="state_not_bookmarked">ليس ضمن المفضلة</string>
 
+    <string name="epg_next">التالي: %1$s</string>
+
     <string name="error_offline">لا يوجد اتصال بالإنترنت. تحقق من الاتصال ثم أعد المحاولة.</string>
     <string name="error_timeout">استغرق الطلب وقتًا طويلًا. أعد المحاولة.</string>
     <string name="error_unauthorized">لم يعد وصولك مصرحًا به. حدّث الوصول المُدار أو تواصل مع مزود الخدمة.</string>

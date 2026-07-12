@@ -130,6 +130,11 @@ fun PerformanceSettingsPanel(
                     value = "${lastSync.liveChannels} live · ${lastSync.movies} movies · ${lastSync.series} series",
                     stacked = compactContent,
                 )
+                DiagnosticRow(
+                    label = "TV guide",
+                    value = "${lastSync.epgProgrammes} programmes",
+                    stacked = compactContent,
+                )
                 lastSync.error?.let { error ->
                     Text(
                         text = error,

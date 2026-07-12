@@ -41,6 +41,8 @@
     <string name="state_bookmarked">Bookmarked</string>
     <string name="state_not_bookmarked">Not bookmarked</string>
 
+    <string name="epg_next">Next: %1$s</string>
+
     <string name="error_offline">No internet connection. Check your connection and try again.</string>
     <string name="error_timeout">The request took too long. Try again.</string>
     <string name="error_unauthorized">Your access is no longer authorized. Refresh managed access or contact your provider.</string>

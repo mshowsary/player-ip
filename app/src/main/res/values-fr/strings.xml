@@ -40,6 +40,8 @@
     <string name="state_bookmarked">Dans les favoris</string>
     <string name="state_not_bookmarked">Pas dans les favoris</string>
 
+    <string name="epg_next">Ensuite : %1$s</string>
+
     <string name="error_offline">Aucune connexion Internet. Vérifiez votre connexion puis réessayez.</string>
     <string name="error_timeout">La demande a pris trop de temps. Réessayez.</string>
     <string name="error_unauthorized">Votre accès n’est plus autorisé. Actualisez l’accès géré ou contactez votre fournisseur.</string>

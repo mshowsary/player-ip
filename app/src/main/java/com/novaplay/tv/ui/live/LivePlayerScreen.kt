@@ -42,9 +42,11 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -54,12 +56,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.novaplay.tv.R
+import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.player.BufferingIndicator
 import com.novaplay.tv.ui.player.PlayerSurface
 import com.novaplay.tv.ui.theme.NovaAccentGradient
 import com.novaplay.tv.ui.theme.isTvDevice
+import java.text.DateFormat
+import java.util.Date
 
 /**
  * Full-screen live playback surface. D-pad UP/DOWN zap to the next/previous
@@ -73,6 +79,7 @@ fun LivePlayerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
+    val nowNext by viewModel.nowNext.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTv = isTvDevice()
@@ -180,6 +187,7 @@ fun LivePlayerScreen(
                 number = state.channel?.num,
                 name = state.channel?.name.orEmpty(),
                 categoryName = state.categoryName,
+                nowNext = nowNext,
                 // Touch has no CH+/CH- keys: zap buttons live in the overlay.
                 onZapNext = viewModel::zapNext.takeUnless { isTv },
                 onZapPrev = viewModel::zapPrev.takeUnless { isTv },
@@ -202,15 +210,17 @@ fun LivePlayerScreen(
 }
 
 /**
- * Bottom overlay showing channel number, name and category over a scrim
- * gradient. On touch form factors it also hosts up/down zap buttons; TV
- * remotes zap via D-pad, so the buttons are omitted there.
+ * Bottom overlay showing channel number, name, category and — when the guide
+ * knows it — the airing programme with its time range, over a scrim gradient.
+ * On touch form factors it also hosts up/down zap buttons; TV remotes zap via
+ * D-pad, so the buttons are omitted there.
  */
 @Composable
 private fun ChannelInfoBar(
     number: Int?,
     name: String,
     categoryName: String?,
+    nowNext: EpgNowNext = EpgNowNext.EMPTY,
     onZapNext: (() -> Unit)? = null,
     onZapPrev: (() -> Unit)? = null,
 ) {
@@ -252,6 +262,29 @@ private fun ChannelInfoBar(
                         text = it,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                // Locale-aware short times, e.g. "18:30 – 20:00  Evening News".
+                val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+                nowNext.now?.let { airing ->
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "${timeFormat.format(Date(airing.startMs))} – " +
+                            "${timeFormat.format(Date(airing.endMs))}  ${airing.title}",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = Color.White.copy(alpha = 0.92f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                nowNext.next?.let { upcoming ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(R.string.epg_next, upcoming.title),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }

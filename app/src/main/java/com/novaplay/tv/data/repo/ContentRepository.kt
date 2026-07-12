@@ -12,6 +12,8 @@ import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.db.RecentView
 import com.novaplay.tv.data.db.Series
 import com.novaplay.tv.data.db.WatchProgress
+import com.novaplay.tv.data.epg.EpgNowNext
+import com.novaplay.tv.data.epg.EpgNowNextPolicy
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.remote.XtreamClient
 import kotlinx.coroutines.flow.Flow
@@ -111,6 +113,19 @@ class ContentRepository @Inject constructor(
             LiveFormat.HLS -> listOf(xtream.liveUrl(playlist, channel.streamId, "m3u8"))
             LiveFormat.TS -> listOf(xtream.liveUrl(playlist, channel.streamId, "ts"))
         }
+    }
+
+    // ---- EPG ----
+
+    /**
+     * Now/next guide info for one channel at [nowMs], re-emitting whenever a
+     * guide refresh changes the underlying rows. Channels without a guide key
+     * get a constant empty flow — no query runs at all.
+     */
+    fun nowNext(channel: LiveChannel, nowMs: Long): Flow<EpgNowNext> {
+        val key = channel.epgChannelId ?: return flowOf(EpgNowNext.EMPTY)
+        return db.epgDao().observeUpcoming(channel.playlistId, key, nowMs)
+            .map { upcoming -> EpgNowNextPolicy.fromUpcoming(upcoming, nowMs) }
     }
 
     // ---- Movies ----
