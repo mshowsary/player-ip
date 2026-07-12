@@ -8,9 +8,11 @@ import com.novaplay.tv.data.remote.CreatePairingSessionRequest
 import com.novaplay.tv.data.remote.MockPortal
 import com.novaplay.tv.data.remote.PortalApi
 import com.novaplay.tv.data.remote.PortalPlaylistDto
+import com.novaplay.tv.data.remote.PortalPlaylistsResponse
 import com.novaplay.tv.data.remote.RefreshDeviceTokenRequest
 import com.novaplay.tv.data.security.PortalTokenStore
 import com.novaplay.tv.data.security.PortalTokens
+import retrofit2.Response
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -150,10 +152,9 @@ class PortalPairingRepository @Inject constructor(
 
         val identity = deviceIdentity.get()
         var tokens = tokenStore.load() ?: error("This device is not paired")
-        require(tokens.deviceId == identity.deviceId) {
-            tokenStore.clear()
-            managedAccessRepository.clear()
-            "Portal session belongs to another installation"
+        if (tokens.deviceId != identity.deviceId) {
+            revokeSession("The managed session belongs to another app installation. Pair this device again.")
+            error("Portal session belongs to another installation")
         }
 
         if (tokens.accessTokenExpiresAtEpochSec <= nowEpochSec() + REFRESH_WINDOW_SECONDS) {
@@ -163,42 +164,48 @@ class PortalPairingRepository @Inject constructor(
         val response = api.getAuthorizedPlaylists("Bearer ${tokens.accessToken}")
         if (response.code() == 401) {
             tokens = refresh(tokens)
-            val retry = api.getAuthorizedPlaylists("Bearer ${tokens.accessToken}")
-            check(retry.isSuccessful) { "Portal authorization failed: HTTP ${retry.code()}" }
-            val body = retry.body()
-            managedAccessRepository.applyPortalPolicy(body?.policy)
-            return@runCatching body?.playlists.orEmpty()
+            return@runCatching consumeAuthorizedResponse(
+                api.getAuthorizedPlaylists("Bearer ${tokens.accessToken}"),
+            )
         }
-        check(response.isSuccessful) { "Portal request failed: HTTP ${response.code()}" }
-        val body = response.body()
-        managedAccessRepository.applyPortalPolicy(body?.policy)
-        body?.playlists.orEmpty()
+        consumeAuthorizedResponse(response)
     }
 
     /** True when encrypted pairing tokens exist locally. */
     fun hasStoredSession(): Boolean = tokenStore.load() != null
 
-    /** Forgets tokens and managed policy locally; the portal is not notified. */
+    /** Explicit user disconnect returns to personal mode; server failures never call this path. */
     fun disconnect() {
         tokenStore.clear()
-        managedAccessRepository.clear()
+        managedAccessRepository.disconnectToPersonal()
     }
 
-    // Rotates the access token. Missing/revoked refresh credentials clear the
-    // session and policy so the device must pair again.
+    private fun consumeAuthorizedResponse(
+        response: Response<PortalPlaylistsResponse>,
+    ): List<PortalPlaylistDto> {
+        if (response.code() == 401 || response.code() == 403) {
+            revokeSession("Managed access was revoked or is no longer authorized. Pair this device again.")
+            error("Portal authorization was revoked")
+        }
+        check(response.isSuccessful) { "Portal request failed: HTTP ${response.code()}" }
+        val body = response.body() ?: error("Portal returned an empty playlist response")
+        managedAccessRepository.applyPortalPolicy(body.policy)
+        return body.playlists
+    }
+
+    // Rotates the access token. Missing/revoked refresh credentials block the
+    // managed device durably instead of returning it to personal access.
     private suspend fun refresh(current: PortalTokens): PortalTokens {
         requirePortalConfigured()
         val refreshToken = current.refreshToken ?: run {
-            tokenStore.clear()
-            managedAccessRepository.clear()
+            revokeSession("The managed session expired and cannot be refreshed. Pair this device again.")
             error("Portal session expired; pair this device again")
         }
         val response = api.refreshDeviceToken(
             RefreshDeviceTokenRequest(deviceId = current.deviceId, refreshToken = refreshToken),
         )
         if (response.code() == 401 || response.code() == 403) {
-            tokenStore.clear()
-            managedAccessRepository.clear()
+            revokeSession("Managed access was revoked by the provider. Pair this device again or contact support.")
             error("Portal session was revoked; pair this device again")
         }
         check(response.isSuccessful) { "Portal token refresh failed: HTTP ${response.code()}" }
@@ -211,6 +218,11 @@ class PortalPairingRepository @Inject constructor(
         )
         tokenStore.save(refreshed)
         return refreshed
+    }
+
+    private fun revokeSession(message: String) {
+        tokenStore.clear()
+        managedAccessRepository.markSessionRevoked(message)
     }
 
     private fun requirePortalConfigured() {
