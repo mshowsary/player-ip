@@ -41,6 +41,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.tv.material3.Border
 import androidx.tv.material3.ClickableSurfaceDefaults
 import androidx.tv.material3.Glow
@@ -162,7 +163,6 @@ fun NovaButton(
     }
 }
 
-// Centered single-line button label; ellipsizes instead of wrapping.
 @Composable
 private fun BoxScope.FocusAwareButtonLabel(text: String, prominent: Boolean) {
     // One-line labels keep action rows stable. Long actions should receive a
@@ -180,10 +180,6 @@ private fun BoxScope.FocusAwareButtonLabel(text: String, prominent: Boolean) {
     )
 }
 
-/**
- * Small accent-colored dot that pulses its alpha indefinitely — a lightweight
- * "activity in progress" indicator (caller supplies the size via [modifier]).
- */
 @Composable
 fun PulsingDot(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "pulse")
@@ -231,10 +227,6 @@ fun ShimmerBox(modifier: Modifier = Modifier, shape: Shape = MaterialTheme.shape
     )
 }
 
-/**
- * Full-size centered error message with a Retry button. On TV the button grabs
- * D-pad focus on entry so a single remote press retries without navigating.
- */
 @Composable
 fun ErrorState(
     message: String,
@@ -266,7 +258,6 @@ fun ErrorState(
     }
 }
 
-/** Full-size centered muted message for empty lists and grids; nothing focusable inside. */
 @Composable
 fun EmptyState(message: String, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -299,26 +290,36 @@ fun NovaDialog(
     }
     val panelPadding = if (compact) 22.dp else 28.dp
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = MaterialTheme.shapes.large,
-            colors = androidx.tv.material3.SurfaceDefaults.colors(
-                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
-                contentColor = MaterialTheme.colorScheme.onSurface,
-            ),
-            border = Border(
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
-                shape = MaterialTheme.shapes.large,
-            ),
-            modifier = Modifier.width(dialogWidth),
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(modifier = Modifier.padding(panelPadding)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 18.dp),
-                )
-                content()
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                colors = androidx.tv.material3.SurfaceDefaults.colors(
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+                border = Border(
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.10f)),
+                    shape = MaterialTheme.shapes.large,
+                ),
+                modifier = Modifier.width(dialogWidth),
+            ) {
+                Column(modifier = Modifier.padding(panelPadding)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(bottom = 18.dp),
+                    )
+                    content()
+                }
             }
         }
     }

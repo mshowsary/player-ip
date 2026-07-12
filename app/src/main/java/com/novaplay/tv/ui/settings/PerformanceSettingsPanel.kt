@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -41,7 +42,6 @@ import com.novaplay.tv.data.repo.AppDiagnostics
 import com.novaplay.tv.data.repo.AppDiagnosticsRepository
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaButton
-import com.novaplay.tv.ui.theme.isCompactWidth
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -59,197 +59,247 @@ fun PerformanceSettingsPanel(
     onCopyDiagnostics: () -> Unit,
     firstFocusRequester: FocusRequester? = null,
 ) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium)
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.border.copy(alpha = 0.55f),
-                shape = MaterialTheme.shapes.medium,
-            )
-            .padding(18.dp),
-    ) {
-        Text(text = "Performance and synchronization", style = MaterialTheme.typography.titleLarge)
-        Text(
-            text = "Keep the active catalogue fresh without interrupting browsing, and create privacy-safe support information.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val compactContent = maxWidth < 520.dp
 
-        Text(
-            text = "Automatic catalogue refresh",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Column(
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.medium)
+                .border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.border.copy(alpha = 0.55f),
+                    shape = MaterialTheme.shapes.medium,
+                )
+                .padding(if (compactContent) 14.dp else 18.dp),
         ) {
-            BackgroundSyncMode.entries.forEachIndexed { index, mode ->
-                PerformanceChoice(
-                    text = mode.label,
-                    selected = mode == backgroundMode,
-                    onClick = { onBackgroundMode(mode) },
-                    focusRequester = firstFocusRequester.takeIf { index == 0 },
+            Text(
+                text = "Keep the active catalogue fresh without interrupting browsing, and create privacy-safe support information.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            Text(
+                text = "Automatic catalogue refresh",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                BackgroundSyncMode.entries.forEachIndexed { index, mode ->
+                    PerformanceChoice(
+                        text = mode.label,
+                        selected = mode == backgroundMode,
+                        onClick = { onBackgroundMode(mode) },
+                        focusRequester = firstFocusRequester.takeIf { index == 0 },
+                    )
+                }
+            }
+            Text(
+                text = backgroundMode.description + if (backgroundMode == BackgroundSyncMode.OFF) {
+                    "."
+                } else {
+                    ". Android may delay it to protect battery, storage and network stability."
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+
+            if (lastSync.exists) {
+                val result = if (lastSync.successful) "Successful" else "Failed"
+                DiagnosticRow(
+                    label = "Last refresh",
+                    value = "$result · ${lastSync.trigger.ifBlank { "Unknown" }}",
+                    stacked = compactContent,
+                )
+                DiagnosticRow(
+                    label = "Completed",
+                    value = AppDiagnosticsRepository.formatDateTime(lastSync.completedAtEpochMs),
+                    stacked = compactContent,
+                )
+                DiagnosticRow(
+                    label = "Duration",
+                    value = AppDiagnosticsRepository.formatDuration(lastSync.durationMs),
+                    stacked = compactContent,
+                )
+                DiagnosticRow(
+                    label = "Installed catalogue",
+                    value = "${lastSync.liveChannels} live · ${lastSync.movies} movies · ${lastSync.series} series",
+                    stacked = compactContent,
+                )
+                lastSync.error?.let { error ->
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            } else {
+                Text(
+                    text = "No refresh report has been recorded yet.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-        Text(
-            text = backgroundMode.description + if (backgroundMode == BackgroundSyncMode.OFF) {
-                "."
-            } else {
-                ". Android may delay it to protect battery, storage and network stability."
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
 
-        if (lastSync.exists) {
-            val result = if (lastSync.successful) "Successful" else "Failed"
-            DiagnosticRow("Last refresh", "$result · ${lastSync.trigger.ifBlank { "Unknown" }}")
-            DiagnosticRow(
-                "Completed",
-                AppDiagnosticsRepository.formatDateTime(lastSync.completedAtEpochMs),
+            NovaButton(
+                text = when (syncStatus) {
+                    is SyncStatus.Syncing -> "Syncing ${syncStatus.step}…"
+                    else -> "Re-sync active playlist"
+                },
+                onClick = onSync,
+                prominent = syncStatus !is SyncStatus.Syncing,
+                modifier = Modifier.fillMaxWidth(),
             )
-            DiagnosticRow(
-                "Duration",
-                AppDiagnosticsRepository.formatDuration(lastSync.durationMs),
-            )
-            DiagnosticRow(
-                "Installed catalogue",
-                "${lastSync.liveChannels} live · ${lastSync.movies} movies · ${lastSync.series} series",
-            )
-            lastSync.error?.let { error ->
+            if (syncStatus is SyncStatus.Failed) {
                 Text(
-                    text = error,
+                    text = syncStatus.message,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
             }
-        } else {
+            NovaButton(
+                text = if (cacheCleared) "Image cache cleared ✓" else "Clear image cache",
+                onClick = onClearCache,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
             Text(
-                text = "No refresh report has been recorded yet.",
-                style = MaterialTheme.typography.bodySmall,
+                text = "Build and security",
+                style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
+            DiagnosticRow("Build channel", diagnostics.buildChannel, compactContent)
+            DiagnosticRow("Portal control plane", diagnostics.portalSecurityStatus, compactContent)
+            DiagnosticRow("Application-data backup", diagnostics.backupStatus, compactContent)
+            DiagnosticRow(
+                label = "HTTP playlists",
+                value = if (diagnostics.httpPlaylistCompatibility) {
+                    "Supported for stream compatibility · portal remains HTTPS-only"
+                } else {
+                    "Disabled"
+                },
+                stacked = compactContent,
+            )
 
-        NovaButton(
-            text = when (syncStatus) {
-                is SyncStatus.Syncing -> "Syncing ${syncStatus.step}…"
-                else -> "Re-sync active playlist"
-            },
-            onClick = onSync,
-            prominent = syncStatus !is SyncStatus.Syncing,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        if (syncStatus is SyncStatus.Failed) {
             Text(
-                text = syncStatus.message,
+                text = "Device health",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DiagnosticRow("Network", diagnostics.networkLabel, compactContent)
+            DiagnosticRow(
+                label = "Memory",
+                value = "${diagnostics.memoryClassMb} MB" +
+                    if (diagnostics.lowRamDevice) " · low-RAM mode" else "",
+                stacked = compactContent,
+            )
+            DiagnosticRow(
+                "Database",
+                AppDiagnosticsRepository.formatBytes(diagnostics.databaseBytes),
+                compactContent,
+            )
+            DiagnosticRow(
+                "Image cache",
+                AppDiagnosticsRepository.formatBytes(diagnostics.imageCacheBytes),
+                compactContent,
+            )
+            DiagnosticRow(
+                "Temporary snapshots",
+                AppDiagnosticsRepository.formatBytes(diagnostics.snapshotCacheBytes),
+                compactContent,
+            )
+            DiagnosticRow(
+                "Free storage",
+                AppDiagnosticsRepository.formatBytes(diagnostics.freeStorageBytes),
+                compactContent,
+            )
+            DiagnosticRow(
+                label = "Active catalogue",
+                value = "${diagnostics.liveChannels} live · ${diagnostics.movies} movies · ${diagnostics.series} series",
+                stacked = compactContent,
+            )
+
+            if (compactContent) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    NovaButton(
+                        text = "Refresh health",
+                        onClick = onRefreshDiagnostics,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    NovaButton(
+                        text = "Copy support info",
+                        onClick = onCopyDiagnostics,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            } else {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    NovaButton(
+                        text = "Refresh health",
+                        onClick = onRefreshDiagnostics,
+                        modifier = Modifier.weight(1f),
+                    )
+                    NovaButton(
+                        text = "Copy support info",
+                        onClick = onCopyDiagnostics,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+            Text(
+                text = message ?: "Support info excludes playlist URLs, credentials, tokens and device identifiers.",
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                color = if (message == null) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
             )
         }
-        NovaButton(
-            text = if (cacheCleared) "Image cache cleared ✓" else "Clear image cache",
-            onClick = onClearCache,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Text(
-            text = "Build and security",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        DiagnosticRow("Build channel", diagnostics.buildChannel)
-        DiagnosticRow("Portal control plane", diagnostics.portalSecurityStatus)
-        DiagnosticRow("Application-data backup", diagnostics.backupStatus)
-        DiagnosticRow(
-            "HTTP playlists",
-            if (diagnostics.httpPlaylistCompatibility) {
-                "Supported for stream compatibility · portal remains HTTPS-only"
-            } else {
-                "Disabled"
-            },
-        )
-
-        Text(
-            text = "Device health",
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        DiagnosticRow("Network", diagnostics.networkLabel)
-        DiagnosticRow(
-            "Memory",
-            "${diagnostics.memoryClassMb} MB" + if (diagnostics.lowRamDevice) " · low-RAM mode" else "",
-        )
-        DiagnosticRow("Database", AppDiagnosticsRepository.formatBytes(diagnostics.databaseBytes))
-        DiagnosticRow("Image cache", AppDiagnosticsRepository.formatBytes(diagnostics.imageCacheBytes))
-        DiagnosticRow("Temporary snapshots", AppDiagnosticsRepository.formatBytes(diagnostics.snapshotCacheBytes))
-        DiagnosticRow("Free storage", AppDiagnosticsRepository.formatBytes(diagnostics.freeStorageBytes))
-        DiagnosticRow(
-            "Active catalogue",
-            "${diagnostics.liveChannels} live · ${diagnostics.movies} movies · ${diagnostics.series} series",
-        )
-
-        if (isCompactWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                NovaButton(
-                    text = "Refresh health",
-                    onClick = onRefreshDiagnostics,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                NovaButton(
-                    text = "Copy support info",
-                    onClick = onCopyDiagnostics,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                NovaButton(
-                    text = "Refresh health",
-                    onClick = onRefreshDiagnostics,
-                    modifier = Modifier.weight(1f),
-                )
-                NovaButton(
-                    text = "Copy support info",
-                    onClick = onCopyDiagnostics,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-        Text(
-            text = message ?: "Support info excludes playlist URLs, credentials, tokens and device identifiers.",
-            style = MaterialTheme.typography.bodySmall,
-            color = if (message == null) {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            } else {
-                MaterialTheme.colorScheme.primary
-            },
-        )
     }
 }
 
 @Composable
-private fun DiagnosticRow(label: String, value: String) {
-    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(12.dp))
-        Text(
-            text = value.ifBlank { "—" },
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1.35f),
-        )
+private fun DiagnosticRow(label: String, value: String, stacked: Boolean) {
+    if (stacked) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = value.ifBlank { "—" },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    } else {
+        Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = value.ifBlank { "—" },
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1.7f),
+            )
+        }
     }
 }
 
