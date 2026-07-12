@@ -25,6 +25,7 @@ Nothing from this stack is merged into `develop` or `main` by this test.
 - A complete external signing environment can sign both APK and AAB without committing secrets.
 - `:app:verifyReleaseCandidate` runs tests, lint, debug/release APK builds, release AAB build and metadata generation.
 - `tools/package_release.py` creates stable artifact names, SHA-256 checksums and a privacy-safe manifest.
+- The manifest distinguishes the approved source commit from GitHub's CI merge/test commit.
 - Packaging fails when zero or multiple release APKs/AABs are present.
 - CI validates the packager and uploads the RC package, private R8 mapping, lint reports and Room schemas.
 
@@ -109,7 +110,7 @@ The output directory must contain exactly:
 For the default unsigned build, artifact names should contain:
 
 ```text
-novaplay-1.0.0-rc.1-1000001-<commit>-unsigned
+novaplay-1.0.0-rc.1-1000001-<source-commit>-unsigned
 ```
 
 ## Validate checksums
@@ -123,7 +124,22 @@ Get-ChildItem dist\release-candidate\*.apk,dist\release-candidate\*.aab |
 
 Compare the displayed hashes with `dist\release-candidate\SHA256SUMS`. They must match exactly.
 
-Run the packaging command a second time without rebuilding. `release-manifest.json` and `SHA256SUMS` must remain identical for the same artifact bytes and Git commit.
+Run the packaging command a second time without rebuilding. `release-manifest.json` and `SHA256SUMS` must remain identical for the same artifact bytes and the same source/build commit values.
+
+## Commit traceability
+
+For a local build:
+
+- `commit` should equal the local branch `HEAD`.
+- `build_commit` should normally equal `commit`.
+
+For a GitHub pull-request artifact:
+
+- `commit` must equal the pull request's exact head SHA—the commit both collaborators fetch and approve.
+- `build_commit` may differ because GitHub compiles a temporary merge commit against the PR base.
+- Versioned APK/AAB filenames must use the source `commit`, not the temporary merge commit.
+
+This prevents a collaborator from approving one branch SHA while the package appears to belong to an unrelated synthetic SHA.
 
 ## Privacy inspection
 
@@ -133,7 +149,8 @@ They may contain:
 
 - Application ID
 - Version code/name
-- Git commit
+- Approved source commit
+- Tested build/merge commit
 - Build channel
 - Portal-configured boolean
 - Signing-configured boolean
@@ -167,7 +184,7 @@ After CI succeeds, confirm the run contains:
 - `android-lint-reports`
 - `room-schemas`
 
-Download `novaplay-release-candidate` and repeat the checksum/privacy inspection. Keep `novaplay-r8-mapping` private.
+Download `novaplay-release-candidate` and repeat the checksum, commit-traceability and privacy inspections. Keep `novaplay-r8-mapping` private.
 
 ## Pass criteria
 
@@ -177,6 +194,7 @@ Download `novaplay-release-candidate` and repeat the checksum/privacy inspection
 - Packaging-tool unit tests pass.
 - Exactly one APK and one AAB are packaged.
 - Manifest and checksum file are stable and privacy-safe.
+- Source and build commits are recorded correctly.
 - SHA-256 values match the packaged files.
 - CI uploads all expected artifacts.
 - Both collaborators approve the same final commit before any integration PR is created.
