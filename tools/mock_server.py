@@ -90,12 +90,16 @@ http://10.0.2.2:8899/direct/3.mp4
 
 
 class Handler(BaseHTTPRequestHandler):
+    """Single handler faking both the Xtream panel and the M3U/media host."""
+
     protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
+        """Log requests to stdout, flushed, so terminal-driven test runs see them live."""
         print("%s %s" % (self.address_string(), fmt % args), flush=True)
 
     def send_json(self, obj):
+        """Send obj as a JSON 200 with exact Content-Length (required for HTTP/1.1 keep-alive)."""
         body = json.dumps(obj).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -104,6 +108,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def send_media(self):
+        """Serve the test MP4 with HTTP Range support (206) so ExoPlayer can probe and seek."""
         size = os.path.getsize(MEDIA)
         range_header = self.headers.get("Range")
         start, end = 0, size - 1
@@ -135,6 +140,8 @@ class Handler(BaseHTTPRequestHandler):
                 remaining -= len(chunk)
 
     def do_GET(self):
+        """Route everything: Xtream actions on /player_api.php, the M3U list, media
+        paths, and deliberate 404s on .m3u8 to exercise the HLS -> TS fallback."""
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)

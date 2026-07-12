@@ -13,6 +13,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/**
+ * Application entry point: hosts the Hilt graph, reconciles the background sync
+ * schedule at startup, and supplies the app-wide Coil image loader.
+ */
 @HiltAndroidApp
 class NovaPlayApp : Application(), ImageLoaderFactory {
 
@@ -23,6 +27,7 @@ class NovaPlayApp : Application(), ImageLoaderFactory {
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
+    /** Standard startup plus async WorkManager reconciliation, kept off the main thread. */
     override fun onCreate() {
         super.onCreate()
         // WorkManager reconciliation is not part of the first rendered frame.

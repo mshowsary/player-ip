@@ -32,6 +32,10 @@ class PortalTokenStore @Inject constructor(
 ) {
     private val preferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    /**
+     * Encrypts and persists the session. Only the token values are sealed; deviceId
+     * and the expiry timestamp are not secrets and stay readable for cheap checks.
+     */
     @Synchronized
     fun save(tokens: PortalTokens) {
         preferences.edit()
@@ -42,6 +46,10 @@ class PortalTokenStore @Inject constructor(
             .apply()
     }
 
+    /**
+     * Returns the stored session, or null when signed out. Fails closed: any decryption
+     * failure wipes the store and returns null instead of crashing or retrying.
+     */
     @Synchronized
     fun load(): PortalTokens? {
         val deviceId = preferences.getString(KEY_DEVICE_ID, null) ?: return null
@@ -61,11 +69,13 @@ class PortalTokenStore @Inject constructor(
         }
     }
 
+    /** Drops the whole session, signing this installation out of the portal. */
     @Synchronized
     fun clear() {
         preferences.edit().clear().apply()
     }
 
+    // AES-GCM with a fresh random IV per token; encoded as base64(iv || ciphertext).
     private fun encrypt(value: String): String {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
@@ -76,6 +86,8 @@ class PortalTokenStore @Inject constructor(
         return Base64.encodeToString(payload, Base64.NO_WRAP)
     }
 
+    // Splits iv || ciphertext and decrypts; throws on truncated or tampered payloads,
+    // which load() converts into the fail-closed signed-out state.
     private fun decrypt(encoded: String): String {
         val payload = Base64.decode(encoded, Base64.NO_WRAP)
         require(payload.size > IV_SIZE_BYTES) { "Encrypted portal token is truncated" }
@@ -86,6 +98,8 @@ class PortalTokenStore @Inject constructor(
         return cipher.doFinal(ciphertext).toString(Charsets.UTF_8)
     }
 
+    // Same lazily-created, non-exportable Keystore AES-GCM key pattern as PlaylistSecrets,
+    // under its own alias so tokens and playlist credentials can be revoked independently.
     @Synchronized
     private fun getOrCreateKey(): SecretKey {
         val keyStore = KeyStore.getInstance(KEYSTORE).apply { load(null) }

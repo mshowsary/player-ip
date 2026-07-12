@@ -15,6 +15,10 @@ import com.novaplay.tv.ui.theme.ProvideAdaptiveEnvironment
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+/**
+ * Single-activity host: the whole UI lives in Compose behind [NovaNavGraph]. Also owns
+ * system-bar visibility so immersive playback survives focus loss to system dialogs.
+ */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
@@ -23,6 +27,10 @@ class MainActivity : ComponentActivity() {
 
     private var immersiveNow: Boolean = false
 
+    /**
+     * Builds the Compose tree, threading the persisted UI-mode preference into the
+     * adaptive (touch vs. TV/remote) environment so a settings change restyles live.
+     */
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -38,16 +46,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Re-hides the system bars when focus returns mid-playback — the system restores
+     * them whenever a dialog or the notification shade steals window focus.
+     */
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus && immersiveNow) applySystemBars(hidden = true)
     }
 
+    // Remembers the desired state so onWindowFocusChanged can restore it later.
     private fun updateImmersiveMode(hidden: Boolean) {
         immersiveNow = hidden
         applySystemBars(hidden)
     }
 
+    // Transient-by-swipe behavior keeps hidden bars retrievable on touch devices.
     private fun applySystemBars(hidden: Boolean) {
         WindowCompat.setDecorFitsSystemWindows(window, !hidden)
         val controller = WindowCompat.getInsetsController(window, window.decorView)
