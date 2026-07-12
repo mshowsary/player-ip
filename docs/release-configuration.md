@@ -106,7 +106,11 @@ The clean output directory contains:
 - `release-manifest.json`
 - `SHA256SUMS`
 
-The manifest records the application ID, version, Git commit, build channel, portal-configured boolean, signing-configured boolean, artifact sizes and SHA-256 hashes. It contains no portal hostname, credentials, device identifiers or playlist data. No timestamp is included, so packaging the same artifact bytes and commit produces the same manifest and checksum file.
+The manifest records the application ID, version, source commit, tested build commit, build channel, portal-configured boolean, signing-configured boolean, artifact sizes and SHA-256 hashes. It contains no portal hostname, credentials, device identifiers or playlist data.
+
+For a local build, `commit` and `build_commit` are normally the same Git SHA. In a pull-request workflow, `commit` records the exact head commit collaborators approve, while `build_commit` records GitHub's synthetic merge commit that CI actually compiled against the target branch. Artifact filenames use the approved source commit.
+
+No timestamp is included, so packaging the same artifact bytes with the same source/build commit values produces the same manifest and checksum file.
 
 The packager deliberately fails when it finds zero or multiple APKs/AABs. This prevents accidentally distributing the wrong variant.
 
