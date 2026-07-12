@@ -16,7 +16,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
 
     steps:
       - name: Check out repository
@@ -32,20 +32,24 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Build, test, and lint debug and release
+      - name: Test release packaging tool
+        run: python3 -m unittest discover -s tools -p 'test_*.py'
+
+      - name: Verify complete release candidate
         shell: bash
         env:
           NOVAPLAY_PORTAL_BASE_URL: https://portal.ci.invalid
         run: |
           set -o pipefail
-          ./gradlew \
-            :app:testDebugUnitTest \
-            :app:testReleaseUnitTest \
-            :app:assembleDebug \
-            :app:assembleRelease \
-            :app:lintDebug \
-            :app:lintRelease \
+          ./gradlew :app:verifyReleaseCandidate \
             --console=plain --quiet --stacktrace 2>&1 | tee build.log
+
+      - name: Package release candidate with checksums
+        if: success()
+        run: |
+          python3 tools/package_release.py \
+            --commit "${GITHUB_SHA}" \
+            --output dist/release-candidate
 
       - name: Upload build log
         if: always()
@@ -54,7 +58,7 @@ jobs:
           name: android-build-log
           path: build.log
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
 
       - name: Upload debug APK
         if: success()
@@ -65,14 +69,41 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload unsigned release APK
+      - name: Upload raw unsigned release APK
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: novaplay-release-unsigned
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 14
+
+      - name: Upload release candidate package
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaplay-release-candidate
+          path: dist/release-candidate/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload private R8 mapping
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: novaplay-r8-mapping
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-lint-reports
+          path: app/build/reports/lint-results-*.html
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Upload Room schemas
         if: success()
@@ -81,4 +112,4 @@ jobs:
           name: room-schemas
           path: app/schemas/**
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
