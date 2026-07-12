@@ -48,9 +48,9 @@ object PortalEndpointPolicy {
         }
 
         // Reserved documentation/testing domains must never make a production
-        // artifact appear portal-ready. Local loopback hosts remain usable only
-        // through the explicit debug transport exception above.
-        val configured = !isReservedPlaceholderHost(host)
+        // artifact appear portal-ready. Explicit loopback HTTP remains usable
+        // only in debug builds through the localDebugHttp exception.
+        val configured = localDebugHttp || !isReservedPlaceholderHost(host)
         return PortalEndpointAssessment(
             configured = configured,
             transportAllowed = true,
