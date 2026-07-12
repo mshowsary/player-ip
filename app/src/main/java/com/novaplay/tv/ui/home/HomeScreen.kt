@@ -1,5 +1,6 @@
 package com.novaplay.tv.ui.home
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +51,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.R
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.ManagedAccessState
 import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaClickable
@@ -68,7 +70,7 @@ import java.util.Locale
 
 /** One hub tile; cards carrying a [managedFeature] are hidden when the policy denies it. */
 private data class HomeCard(
-    val label: String,
+    @StringRes val labelRes: Int,
     val icon: ImageVector,
     val onClick: () -> Unit,
     val managedFeature: ManagedFeature? = null,
@@ -105,17 +107,17 @@ fun HomeScreen(
         onOpenSettings,
     ) {
         listOf(
-            HomeCard("Live TV", Icons.Default.LiveTv, onOpenLive, ManagedFeature.LIVE),
-            HomeCard("Movies", Icons.Default.Movie, onOpenMovies, ManagedFeature.MOVIES),
-            HomeCard("Series", Icons.Default.VideoLibrary, onOpenSeries, ManagedFeature.SERIES),
-            HomeCard("Playlists", Icons.Default.SwapHoriz, onOpenPlaylists),
-            HomeCard("Settings", Icons.Default.Settings, onOpenSettings),
+            HomeCard(R.string.home_live_tv, Icons.Default.LiveTv, onOpenLive, ManagedFeature.LIVE),
+            HomeCard(R.string.home_movies, Icons.Default.Movie, onOpenMovies, ManagedFeature.MOVIES),
+            HomeCard(R.string.home_series, Icons.Default.VideoLibrary, onOpenSeries, ManagedFeature.SERIES),
+            HomeCard(R.string.home_playlists, Icons.Default.SwapHoriz, onOpenPlaylists),
+            HomeCard(R.string.home_settings, Icons.Default.Settings, onOpenSettings),
         ).filter { card -> card.managedFeature?.let(managedAccess::allows) ?: true }
     }
 
-    val firstCardLabel = cards.firstOrNull()?.label
-    LaunchedEffect(isTv, firstCardLabel) {
-        if (isTv && firstCardLabel != null) runCatching { firstCardFocus.requestFocus() }
+    val firstCardLabelRes = cards.firstOrNull()?.labelRes
+    LaunchedEffect(isTv, firstCardLabelRes) {
+        if (isTv && firstCardLabelRes != null) runCatching { firstCardFocus.requestFocus() }
     }
 
     Column(
@@ -158,7 +160,7 @@ fun HomeScreen(
                     )
                     active.expiryEpochSec?.let { expiry ->
                         Text(
-                            text = "  ·  expires ${formatDate(expiry * 1000)}",
+                            text = "  ·  ${stringResource(R.string.home_expires, formatDate(expiry * 1000))}",
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -201,7 +203,7 @@ fun HomeScreen(
                 .fillMaxWidth()
                 .padding(vertical = if (isTv) 0.dp else 20.dp),
         ) {
-            items(cards, key = { it.label }) { card ->
+            items(cards, key = { it.labelRes }) { card ->
                 HomeCardItem(
                     card = card,
                     modifier = Modifier
@@ -209,7 +211,7 @@ fun HomeScreen(
                         .fillMaxWidth()
                         .aspectRatio(0.94f)
                         .then(
-                            if (card.label == firstCardLabel) {
+                            if (card.labelRes == firstCardLabelRes) {
                                 Modifier.focusRequester(firstCardFocus)
                             } else {
                                 Modifier
@@ -228,13 +230,13 @@ fun HomeScreen(
                     PulsingDot(Modifier.size(8.dp))
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        text = "Syncing ${status.step}…",
+                        text = stringResource(R.string.home_syncing, status.step),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 is SyncStatus.Failed -> Text(
-                    text = "Last sync failed — content may be out of date",
+                    text = stringResource(R.string.home_last_sync_failed),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -249,9 +251,8 @@ private fun ManagedAccessPolicy.shouldShowHomeNotice(): Boolean =
     isManaged && (isBlocked || !allowLive || !allowMovies || !allowSeries)
 
 /**
- * Banner summarising the managed-access policy: status label, the provider's
- * message (or a generated services summary) and the support code. Border and
- * icon switch to the error color when the device is fully blocked.
+ * Banner summarising the managed-access policy: state, per-feature availability,
+ * policy revision, support code and a provider message when present.
  */
 @Composable
 private fun ManagedAccessNotice(policy: ManagedAccessPolicy) {
@@ -280,7 +281,7 @@ private fun ManagedAccessNotice(policy: ManagedAccessPolicy) {
         )
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = policy.statusLabel(),
+                text = managedStatusLabel(policy.state),
                 style = MaterialTheme.typography.titleSmall,
             )
             Text(
@@ -301,17 +302,27 @@ private fun ManagedAccessNotice(policy: ManagedAccessPolicy) {
     }
 }
 
-// Fallback notice body listing whichever services the policy still allows.
+@Composable
+private fun managedStatusLabel(state: ManagedAccessState): String = stringResource(
+    when (state) {
+        ManagedAccessState.UNMANAGED -> R.string.managed_status_personal
+        ManagedAccessState.ACTIVE -> R.string.managed_status_active
+        ManagedAccessState.SUSPENDED -> R.string.managed_status_paused
+        ManagedAccessState.REVOKED -> R.string.managed_status_revoked
+    },
+)
+
+@Composable
 private fun managedServicesSummary(policy: ManagedAccessPolicy): String {
     val available = buildList {
-        if (policy.allowLive) add("Live")
-        if (policy.allowMovies) add("Movies")
-        if (policy.allowSeries) add("Series")
+        if (policy.allowLive) add(stringResource(R.string.service_live))
+        if (policy.allowMovies) add(stringResource(R.string.service_movies))
+        if (policy.allowSeries) add(stringResource(R.string.service_series))
     }
     return if (available.isEmpty()) {
-        "No managed streaming services are currently available."
+        stringResource(R.string.managed_no_services)
     } else {
-        "Available services: ${available.joinToString()}"
+        stringResource(R.string.managed_available_services, available.joinToString())
     }
 }
 
@@ -335,6 +346,7 @@ private fun HomeCardItem(
     card: HomeCard,
     modifier: Modifier = Modifier,
 ) {
+    val label = stringResource(card.labelRes)
     NovaClickable(
         onClick = card.onClick,
         modifier = modifier,
@@ -359,14 +371,14 @@ private fun HomeCardItem(
             ) {
                 Icon(
                     imageVector = card.icon,
-                    contentDescription = card.label,
+                    contentDescription = label,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp),
                 )
             }
             Spacer(Modifier.height(14.dp))
             Text(
-                text = card.label,
+                text = label,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface,
                 letterSpacing = 0.4.sp,
@@ -395,6 +407,6 @@ private fun Clock() {
     )
 }
 
-// e.g. "Jul 12, 2026" — used for the playlist expiry in the header.
+// Locale-aware date used for the playlist expiry in the header.
 private fun formatDate(epochMs: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(epochMs))
