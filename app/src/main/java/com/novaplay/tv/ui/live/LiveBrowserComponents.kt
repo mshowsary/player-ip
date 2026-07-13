@@ -4,11 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -16,15 +13,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
@@ -49,184 +42,21 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
-import coil.compose.AsyncImage
-import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.repo.ContentRepository
-import com.novaplay.tv.ui.components.EmptyState
 import com.novaplay.tv.ui.components.NovaClickable
-import com.novaplay.tv.ui.components.ShimmerBox
 import com.novaplay.tv.ui.theme.NovaAccentGradient
-import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
-import com.novaplay.tv.ui.theme.screenPadding
 
-/**
- * Live TV browser: category rail (chips on compact widths) beside a paged
- * channel list. Remote number keys buffer digits and jump the list to that
- * channel number; group changes reset the scroll, and focusRestorer returns
- * D-pad focus to the last-focused row when coming back from the player.
- */
-@OptIn(ExperimentalComposeUiApi::class)
-@Composable
-fun LiveScreen(
-    onPlayChannel: (channelId: Long, categoryId: Long) -> Unit,
-    viewModel: LiveViewModel = hiltViewModel(),
-) {
-    val categories by viewModel.categories.collectAsStateWithLifecycle()
-    val selectedCategoryId by viewModel.selectedCategoryId.collectAsStateWithLifecycle()
-    val searchActive by viewModel.searchActive.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
-    val digitBuffer by viewModel.digitBuffer.collectAsStateWithLifecycle()
-    val bookmarkedIds by viewModel.bookmarkedIds.collectAsStateWithLifecycle()
-    val channels = viewModel.channels.collectAsLazyPagingItems()
-
-    val channelListState = rememberLazyListState()
-
-    // Digit-jump lands the scroll window on the requested channel number.
-    LaunchedEffect(Unit) {
-        viewModel.jumpToIndex.collect { index ->
-            channelListState.scrollToItem(index.coerceAtLeast(0))
-        }
-    }
-
-    // Every group change starts the list back at the top.
-    LaunchedEffect(selectedCategoryId, searchActive) {
-        channelListState.scrollToItem(0)
-    }
-
-    // Channel pane shared by the wide (rail beside list) and compact
-    // (chips above list) layouts.
-    val channelPane: @Composable () -> Unit = {
-        Column(modifier = Modifier.fillMaxSize()) {
-            if (searchActive) {
-                SearchField(
-                    query = searchQuery,
-                    onQueryChange = viewModel::onSearchQueryChange,
-                    onClose = viewModel::closeSearch,
-                    placeholder = "Search channels…",
-                )
-                Spacer(Modifier.height(12.dp))
-            }
-
-            when {
-                channels.itemCount == 0 && channels.loadState.refresh is androidx.paging.LoadState.Loading -> {
-                    ChannelListSkeleton()
-                }
-                channels.itemCount == 0 -> {
-                    EmptyState(
-                        message = when {
-                            searchActive -> "No channels match your search"
-                            selectedCategoryId == ContentRepository.CATEGORY_BOOKMARKS ->
-                                "No bookmarks yet — tap the bookmark icon on any channel"
-                            selectedCategoryId == ContentRepository.CATEGORY_RECENT ->
-                                "Channels you watch will appear here"
-                            else -> "No channels here yet"
-                        },
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        state = channelListState,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .focusRestorer(),
-                    ) {
-                        items(
-                            count = channels.itemCount,
-                            key = channels.itemKey { it.id },
-                        ) { index ->
-                            channels[index]?.let { channel ->
-                                ChannelRow(
-                                    channel = channel,
-                                    bookmarked = channel.streamId in bookmarkedIds,
-                                    onClick = {
-                                        onPlayChannel(channel.id, selectedCategoryId ?: -1L)
-                                    },
-                                    onToggleBookmark = { viewModel.toggleBookmark(channel) },
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .onPreviewKeyEvent { event ->
-                val digit = event.key.toDigitOrNull()
-                if (digit != null && event.type == KeyEventType.KeyDown) {
-                    viewModel.onDigit(digit)
-                    true
-                } else {
-                    false
-                }
-            }
-            .padding(screenPadding()),
-    ) {
-        if (isCompactWidth()) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                CategoryChipsRow(
-                    categories = categories.map { it.id to it.name },
-                    selectedCategoryId = selectedCategoryId,
-                    searchActive = searchActive,
-                    onSelectCategory = viewModel::selectCategory,
-                    onOpenSearch = viewModel::openSearch,
-                )
-                Spacer(Modifier.height(12.dp))
-                channelPane()
-            }
-        } else {
-            Row(modifier = Modifier.fillMaxSize()) {
-                CategoryRail(
-                    categories = categories.map { it.id to it.name },
-                    selectedCategoryId = selectedCategoryId,
-                    searchActive = searchActive,
-                    onSelectCategory = viewModel::selectCategory,
-                    onOpenSearch = viewModel::openSearch,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .fillMaxWidth(0.3f),
-                )
-
-                Spacer(Modifier.width(24.dp))
-
-                channelPane()
-            }
-        }
-
-        // Typed channel number, echoed large while collecting digits.
-        if (digitBuffer.isNotEmpty()) {
-            Text(
-                text = digitBuffer,
-                style = MaterialTheme.typography.displayMedium,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .clip(MaterialTheme.shapes.medium)
-                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.9f))
-                    .padding(horizontal = 24.dp, vertical = 8.dp),
-            )
-        }
-    }
-}
+// Category navigation and search input shared by the Live browser and the
+// Movies/Series catalog grids. Extracted from the retired first-generation
+// LiveScreen so the shared pieces outlive it.
 
 /**
  * Vertical category list for wide layouts: Search, All, Bookmarks, Recently
@@ -320,6 +150,47 @@ fun CategoryRail(
                 name = name,
                 selected = !searchActive && selectedCategoryId == id,
                 onClick = { onSelectCategory(id) },
+            )
+        }
+    }
+}
+
+// Full-width focusable entry in the category rail; the selected row shows a
+// primary indicator bar at its leading edge.
+@Composable
+private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
+    NovaClickable(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        containerColor = if (selected) {
+            MaterialTheme.colorScheme.surfaceVariant
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        focusedScale = 1.04f,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(horizontal = 16.dp),
+        ) {
+            if (selected) {
+                Box(
+                    modifier = Modifier
+                        .size(width = 4.dp, height = 20.dp)
+                        .clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.primary),
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+            Text(
+                text = name,
+                style = MaterialTheme.typography.titleSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -433,151 +304,6 @@ private fun ChipLabel(text: String, selected: Boolean) {
     )
 }
 
-// Full-width focusable entry in the category rail; the selected row shows a
-// primary indicator bar at its leading edge.
-@Composable
-private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
-    NovaClickable(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(52.dp),
-        containerColor = if (selected) {
-            MaterialTheme.colorScheme.surfaceVariant
-        } else {
-            MaterialTheme.colorScheme.surface
-        },
-        focusedScale = 1.04f,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(horizontal = 16.dp),
-        ) {
-            if (selected) {
-                Box(
-                    modifier = Modifier
-                        .size(width = 4.dp, height = 20.dp)
-                        .clip(MaterialTheme.shapes.small)
-                        .background(MaterialTheme.colorScheme.primary),
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-            Text(
-                text = name,
-                style = MaterialTheme.typography.titleSmall,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-/**
- * One channel entry: number, logo, name and bookmark state. OK/click plays
- * the channel; long-press OK (or tapping the icon on touch) toggles the
- * bookmark.
- */
-@Composable
-private fun ChannelRow(
-    channel: LiveChannel,
-    bookmarked: Boolean,
-    onClick: () -> Unit,
-    onToggleBookmark: () -> Unit,
-) {
-    NovaClickable(
-        onClick = onClick,
-        // TV remotes: long-press OK toggles the bookmark.
-        onLongClick = onToggleBookmark,
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(56.dp),
-        focusedScale = 1.02f,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 14.dp),
-        ) {
-            Text(
-                text = channel.num.toString(),
-                style = MaterialTheme.typography.titleSmall,
-                fontFamily = FontFamily.Monospace,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.width(56.dp),
-            )
-            // Logo on a subtle dark chip; Coil decodes at chip size only.
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(MaterialTheme.shapes.small)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center,
-            ) {
-                AsyncImage(
-                    model = channel.logoUrl,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .size(32.dp)
-                        .clip(MaterialTheme.shapes.extraSmall),
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Text(
-                text = channel.name,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            BookmarkToggle(bookmarked = bookmarked, onToggle = onToggleBookmark)
-        }
-    }
-}
-
-// Touch affordance: not focusable, so TV D-pad navigation is unaffected
-// (remotes use long-press OK instead).
-@Composable
-fun BookmarkToggle(
-    bookmarked: Boolean,
-    onToggle: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Box(
-        modifier = modifier
-            .size(40.dp)
-            .pointerInput(Unit) { detectTapGestures { onToggle() } },
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-            contentDescription = if (bookmarked) "Remove bookmark" else "Add bookmark",
-            tint = if (bookmarked) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-            },
-            modifier = Modifier.size(22.dp),
-        )
-    }
-}
-
-// Shimmer placeholder rows shown while the first channel page loads.
-@Composable
-private fun ChannelListSkeleton() {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        repeat(8) {
-            ShimmerBox(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-            )
-        }
-    }
-}
-
 // Shared search input for Live/Movies/Series panes; focusing it brings up the
 // standard TV on-screen keyboard.
 @Composable
@@ -681,19 +407,4 @@ fun SearchField(
             }
         }
     }
-}
-
-// Maps number-row and numpad keys to their digit for channel-number entry.
-private fun Key.toDigitOrNull(): Char? = when (this) {
-    Key.Zero, Key.NumPad0 -> '0'
-    Key.One, Key.NumPad1 -> '1'
-    Key.Two, Key.NumPad2 -> '2'
-    Key.Three, Key.NumPad3 -> '3'
-    Key.Four, Key.NumPad4 -> '4'
-    Key.Five, Key.NumPad5 -> '5'
-    Key.Six, Key.NumPad6 -> '6'
-    Key.Seven, Key.NumPad7 -> '7'
-    Key.Eight, Key.NumPad8 -> '8'
-    Key.Nine, Key.NumPad9 -> '9'
-    else -> null
 }
