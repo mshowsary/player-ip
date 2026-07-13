@@ -110,6 +110,23 @@ class LivePlayerViewModel @Inject constructor(
     val videoScale: StateFlow<VideoScale> = prefs.videoScale
         .stateIn(viewModelScope, SharingStarted.Eagerly, VideoScale.FIT)
 
+    /** Whether touch slide gestures (volume/brightness/swipe-zap) are enabled in settings. */
+    val gesturesEnabled: StateFlow<Boolean> = prefs.playerGesturesEnabled
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    // One-time gesture hint: pending until it has been displayed once, and only
+    // meaningful while gestures are enabled at all.
+    val gestureHintPending: StateFlow<Boolean> = combine(
+        prefs.playerGesturesEnabled,
+        prefs.gestureHintShown,
+    ) { enabled, shown -> enabled && !shown }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Records that the gesture hint was displayed; it never shows again. */
+    fun markGestureHintShown() {
+        viewModelScope.launch { prefs.setGestureHintShown() }
+    }
+
     /** Advances FIT → FILL → ZOOM → FIT and persists the choice. */
     fun cycleVideoScale() {
         viewModelScope.launch { prefs.setVideoScale(videoScale.value.next()) }

@@ -42,6 +42,13 @@ Tester-feedback revision (same milestone):
 - **Slide gestures on touch**: dragging the left third of the screen adjusts
   brightness (this window only), the right third adjusts media volume, both
   with a percentage HUD; the middle third still swipe-zaps.
+- **Gestures are touch-mode only**: in TV/remote mode (including the manual
+  override on a phone) drags never adjust volume/brightness — only swipe-zap.
+- **One-time gesture demo**: the first playback on touch shows three chips
+  ("↕ Brightness · ↕ Channel · ↕ Volume") for ~5 s; any tap dismisses; it
+  never appears again.
+- **Settings switch**: Settings → Live playback → "Slide gestures" (touch
+  devices only) turns all three drag gestures off; overlay buttons still work.
 
 ## Pull and verify the branch
 

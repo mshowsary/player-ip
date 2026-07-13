@@ -115,9 +115,25 @@ fun LivePlayerScreen(
     val channelListVisible by viewModel.channelListVisible.collectAsStateWithLifecycle()
     val panelQuery by viewModel.panelQuery.collectAsStateWithLifecycle()
     val currentBookmarked by viewModel.currentBookmarked.collectAsStateWithLifecycle()
+    val gesturesEnabled by viewModel.gesturesEnabled.collectAsStateWithLifecycle()
+    val gestureHintPending by viewModel.gestureHintPending.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTv = isTvDevice()
+
+    // First-time gesture demo on touch: three chips over the zones for a few
+    // seconds, then never again (any tap also dismisses it).
+    var hintVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(gestureHintPending, isTv) {
+        if (gestureHintPending && !isTv) {
+            hintVisible = true
+            delay(5_000)
+            if (hintVisible) {
+                hintVisible = false
+                viewModel.markGestureHintShown()
+            }
+        }
+    }
 
     // Volume/brightness slide adjustments (touch); HUD text mirrors each change.
     val context = LocalContext.current
@@ -226,10 +242,14 @@ fun LivePlayerScreen(
             // brightness, right edge volume, and the middle swipe-zaps.
             .pointerInput(Unit) {
                 detectTapGestures {
+                    if (hintVisible) {
+                        hintVisible = false
+                        viewModel.markGestureHintShown()
+                    }
                     if (state.error == null) viewModel.toggleOverlay()
                 }
             }
-            .pointerInput(Unit) {
+            .pointerInput(isTv, gesturesEnabled) {
                 val threshold = 60.dp.toPx()
                 var dragTotal = 0f
                 var zone = DragZone.ZAP
@@ -237,6 +257,11 @@ fun LivePlayerScreen(
                     onDragStart = { offset ->
                         dragTotal = 0f
                         zone = when {
+                            // TV/remote mode is key-driven: a stray drag on a
+                            // hybrid device only swipe-zaps, never adjusts AV.
+                            isTv -> DragZone.ZAP
+                            // Gestures switched off in settings: drags do nothing.
+                            !gesturesEnabled -> DragZone.NONE
                             offset.x < size.width / 3f -> DragZone.BRIGHTNESS
                             offset.x > size.width * 2f / 3f -> DragZone.VOLUME
                             else -> DragZone.ZAP
@@ -245,6 +270,7 @@ fun LivePlayerScreen(
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
                         when (zone) {
+                            DragZone.NONE -> Unit
                             DragZone.ZAP -> dragTotal += dragAmount
                             // Dragging the full height sweeps ~150% so a
                             // comfortable half-screen swipe covers most of the range.
@@ -310,6 +336,24 @@ fun LivePlayerScreen(
                 onToggleBookmark = viewModel::toggleBookmark.takeUnless { isTv },
                 onCycleScale = viewModel::cycleVideoScale.takeUnless { isTv },
             )
+        }
+
+        // One-time gesture demo: one chip per drag zone, mirroring their layout.
+        AnimatedVisibility(
+            visible = hintVisible && !isTv && gesturesEnabled && state.error == null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                GestureHintChip(text = "↕ " + stringResource(R.string.player_brightness))
+                GestureHintChip(text = "↕ " + stringResource(R.string.player_hint_channel))
+                GestureHintChip(text = "↕ " + stringResource(R.string.player_volume))
+            }
         }
 
         // Volume/brightness HUD while (and briefly after) an edge drag.
@@ -588,6 +632,19 @@ private fun PanelSearchField(
     }
 }
 
+// One pill of the first-run gesture demo.
+@Composable
+private fun GestureHintChip(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = Color.White,
+        modifier = Modifier
+            .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    )
+}
+
 /** Localized display name of a video scaling mode. */
 @Composable
 private fun videoScaleLabel(scale: VideoScale): String = stringResource(
@@ -716,8 +773,8 @@ private fun ChannelListPanel(
     }
 }
 
-// Which vertical-drag zone a gesture started in.
-private enum class DragZone { BRIGHTNESS, ZAP, VOLUME }
+// Which vertical-drag zone a gesture started in; NONE ignores the whole drag.
+private enum class DragZone { BRIGHTNESS, ZAP, VOLUME, NONE }
 
 /** The label and percentage shown while sliding volume or brightness. */
 private data class AdjustHud(val labelRes: Int, val percent: Int)

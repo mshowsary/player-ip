@@ -132,6 +132,8 @@ class AppPreferences @Inject constructor(
         val UI_MODE = stringPreferencesKey("ui_mode")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
         val VIDEO_SCALE = stringPreferencesKey("video_scale")
+        val PLAYER_GESTURES = booleanPreferencesKey("player_gestures_enabled")
+        val GESTURE_HINT_SHOWN = booleanPreferencesKey("player_gesture_hint_shown")
         val BACKGROUND_SYNC_MODE = stringPreferencesKey("background_sync_mode")
         val SUB_SIZE = stringPreferencesKey("sub_size")
         val SUB_COLOR = stringPreferencesKey("sub_color")
@@ -208,6 +210,26 @@ class AppPreferences @Inject constructor(
     /** Persists the live-player scaling mode; applies immediately via [videoScale] collectors. */
     suspend fun setVideoScale(scale: VideoScale) {
         context.dataStore.edit { it[Keys.VIDEO_SCALE] = scale.name }
+    }
+
+    /** Whether touch playback slide gestures (volume/brightness/swipe-zap) are active. */
+    val playerGesturesEnabled: Flow<Boolean> = context.dataStore.data
+        .map { it[Keys.PLAYER_GESTURES] ?: true }
+        .distinctUntilChanged()
+
+    /** Enables or disables the touch playback slide gestures. */
+    suspend fun setPlayerGesturesEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.PLAYER_GESTURES] = enabled }
+    }
+
+    /** Whether the one-time gesture hint has already been displayed in the player. */
+    val gestureHintShown: Flow<Boolean> = context.dataStore.data
+        .map { it[Keys.GESTURE_HINT_SHOWN] ?: false }
+        .distinctUntilChanged()
+
+    /** Marks the one-time gesture hint as displayed. */
+    suspend fun setGestureHintShown() {
+        context.dataStore.edit { it[Keys.GESTURE_HINT_SHOWN] = true }
     }
 
     val backgroundSyncMode: Flow<BackgroundSyncMode> = context.dataStore.data
