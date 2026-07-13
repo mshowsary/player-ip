@@ -92,6 +92,8 @@ private fun PerformanceSettingsDialog(
     val lastSync by viewModel.lastSyncSummary.collectAsStateWithLifecycle()
     val diagnostics by viewModel.diagnostics.collectAsStateWithLifecycle()
     val message by viewModel.diagnosticsMessage.collectAsStateWithLifecycle()
+    val lastZapMs by viewModel.lastZapMs.collectAsStateWithLifecycle()
+    val worstZapMs by viewModel.worstZapMs.collectAsStateWithLifecycle()
     val firstFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
     val configuration = LocalConfiguration.current
@@ -122,6 +124,8 @@ private fun PerformanceSettingsDialog(
                 lastSync = lastSync,
                 diagnostics = diagnostics,
                 message = message,
+                lastZapMs = lastZapMs,
+                worstZapMs = worstZapMs,
                 onBackgroundMode = viewModel::setBackgroundSyncMode,
                 onSync = viewModel::resyncNow,
                 onClearCache = viewModel::clearImageCache,
