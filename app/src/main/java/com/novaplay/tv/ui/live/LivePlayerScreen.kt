@@ -101,6 +101,7 @@ import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import java.text.DateFormat
 import java.util.Date
 import kotlin.math.roundToInt
@@ -166,29 +167,23 @@ fun LivePlayerScreen(
         if (!channelListVisible && state.error == null) rootFocus.requestFocus()
     }
 
-    // Brief on-screen confirmation when the scaling mode changes.
+    // Confirmation flashes are driven by explicit user actions (ViewModel
+    // events), never by preference values arriving from disk — deriving them
+    // from the flows made the saved setting flash on player open.
     var scaleFlash by remember { mutableStateOf<VideoScale?>(null) }
-    var scaleSeen by remember { mutableStateOf(false) }
-    LaunchedEffect(videoScale) {
-        if (scaleSeen) {
-            scaleFlash = videoScale
+    LaunchedEffect(Unit) {
+        viewModel.scaleFlashEvents.collectLatest { scale ->
+            scaleFlash = scale
             delay(1_400)
             scaleFlash = null
-        } else {
-            scaleSeen = true
         }
     }
-
-    // Same pattern for the gestures quick toggle.
     var gestureFlash by remember { mutableStateOf<Boolean?>(null) }
-    var gestureSeen by remember { mutableStateOf(false) }
-    LaunchedEffect(gesturesEnabled) {
-        if (gestureSeen) {
-            gestureFlash = gesturesEnabled
+    LaunchedEffect(Unit) {
+        viewModel.gestureFlashEvents.collectLatest { enabled ->
+            gestureFlash = enabled
             delay(1_400)
             gestureFlash = null
-        } else {
-            gestureSeen = true
         }
     }
 
@@ -634,17 +629,19 @@ private fun OverlayActions(
         )
         Spacer(Modifier.width(12.dp))
     }
+    // Arrows follow the on-screen list: channel 84 sits ABOVE 85, so UP moves
+    // to the lower number. (TV D-pad keeps classic CH+/CH- semantics instead.)
     if (onZapNext != null && onZapPrev != null) {
         ZapButton(
             icon = Icons.Default.KeyboardArrowUp,
-            contentDescription = "Next channel",
-            onClick = onZapNext,
+            contentDescription = "Previous channel",
+            onClick = onZapPrev,
         )
         Spacer(Modifier.width(12.dp))
         ZapButton(
             icon = Icons.Default.KeyboardArrowDown,
-            contentDescription = "Previous channel",
-            onClick = onZapPrev,
+            contentDescription = "Next channel",
+            onClick = onZapNext,
         )
     }
 }

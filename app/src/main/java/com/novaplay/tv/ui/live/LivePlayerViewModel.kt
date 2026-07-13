@@ -31,9 +31,12 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -112,13 +115,26 @@ class LivePlayerViewModel @Inject constructor(
     val videoScale: StateFlow<VideoScale> = prefs.videoScale
         .stateIn(viewModelScope, SharingStarted.Eagerly, VideoScale.FIT)
 
+    // Confirmation flashes fire only on explicit user actions. Deriving them
+    // from the preference flows is wrong: the persisted value arriving from
+    // DataStore after the screen's optimistic default would flash on open.
+    private val _scaleFlashEvents = MutableSharedFlow<VideoScale>(extraBufferCapacity = 1)
+    val scaleFlashEvents: SharedFlow<VideoScale> = _scaleFlashEvents.asSharedFlow()
+
+    private val _gestureFlashEvents = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
+    val gestureFlashEvents: SharedFlow<Boolean> = _gestureFlashEvents.asSharedFlow()
+
     /** Whether touch slide gestures (volume/brightness/swipe-zap) are enabled. */
     val gesturesEnabled: StateFlow<Boolean> = prefs.playerGesturesEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    /** Flips the persisted gesture setting — the overlay's quick toggle. */
+    /** Flips the persisted gesture setting and flashes it — the overlay's quick toggle. */
     fun togglePlayerGestures() {
-        viewModelScope.launch { prefs.setPlayerGesturesEnabled(!gesturesEnabled.value) }
+        viewModelScope.launch {
+            val next = !gesturesEnabled.value
+            prefs.setPlayerGesturesEnabled(next)
+            _gestureFlashEvents.tryEmit(next)
+        }
     }
 
     // Once-per-app-session gesture demo: consumed the moment it is dismissed,
@@ -136,9 +152,13 @@ class LivePlayerViewModel @Inject constructor(
         hintConsumed.value = true
     }
 
-    /** Advances FIT → FILL → ZOOM → FIT and persists the choice. */
+    /** Advances FIT → FILL → ZOOM → FIT, persists the choice and flashes it. */
     fun cycleVideoScale() {
-        viewModelScope.launch { prefs.setVideoScale(videoScale.value.next()) }
+        viewModelScope.launch {
+            val next = videoScale.value.next()
+            prefs.setVideoScale(next)
+            _scaleFlashEvents.tryEmit(next)
+        }
     }
 
     // ---- in-player channel list ----

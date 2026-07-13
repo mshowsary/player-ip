@@ -53,6 +53,18 @@ Tester-feedback revision (same milestone):
   highlighted while enabled). The same setting also remains under Settings →
   Live playback.
 
+Post-integration fix (fix/9c-player-flash-and-arrows):
+
+- **No flash on player open**: the video-size and slide-gestures confirmation
+  labels appear only when the user presses the corresponding control — never
+  when the player merely loads a saved setting, in any UI mode. Verify: with
+  gestures off and a non-default video size saved, open a channel in touch AND
+  in forced TV/remote mode — no label appears at start.
+- **Touch arrows follow the list direction**: on channel 85, the ▲ button goes
+  to 84 (the channel above in the list) and ▼ goes to 86. TV D-pad keeps the
+  classic remote semantics (UP = next channel number), and swipe-zapping is
+  unchanged (swipe up = next, like scrolling a list).
+
 ## Pull and verify the branch
 
 ```powershell
