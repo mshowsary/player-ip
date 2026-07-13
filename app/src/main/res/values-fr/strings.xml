@@ -41,6 +41,12 @@
     <string name="state_not_bookmarked">Pas dans les favoris</string>
 
     <string name="epg_next">Ensuite : %1$s</string>
+    <string name="player_channel_list">Chaînes</string>
+    <string name="player_recall">Chaîne précédente</string>
+    <string name="player_video_scale">Format d\'image</string>
+    <string name="video_scale_fit">Ajusté</string>
+    <string name="video_scale_fill">Étiré</string>
+    <string name="video_scale_zoom">Zoom</string>
 
     <string name="error_offline">Aucune connexion Internet. Vérifiez votre connexion puis réessayez.</string>
     <string name="error_timeout">La demande a pris trop de temps. Réessayez.</string>

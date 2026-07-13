@@ -1,9 +1,12 @@
 package com.novaplay.tv.ui.live
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -14,21 +17,28 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -53,17 +63,24 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.PagingData
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.R
+import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.epg.EpgNowNext
+import com.novaplay.tv.data.prefs.VideoScale
 import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.player.BufferingIndicator
 import com.novaplay.tv.ui.player.PlayerSurface
 import com.novaplay.tv.ui.theme.NovaAccentGradient
 import com.novaplay.tv.ui.theme.isTvDevice
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import java.text.DateFormat
 import java.util.Date
 
@@ -80,9 +97,31 @@ fun LivePlayerScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val nowNext by viewModel.nowNext.collectAsStateWithLifecycle()
+    val videoScale by viewModel.videoScale.collectAsStateWithLifecycle()
+    val digitBuffer by viewModel.digitBuffer.collectAsStateWithLifecycle()
+    val channelListVisible by viewModel.channelListVisible.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTv = isTvDevice()
+
+    // Closing the picker restores playback key handling to the root surface.
+    BackHandler(enabled = channelListVisible) { viewModel.closeChannelList() }
+    LaunchedEffect(channelListVisible) {
+        if (!channelListVisible && state.error == null) rootFocus.requestFocus()
+    }
+
+    // Brief on-screen confirmation when the scaling mode changes.
+    var scaleFlash by remember { mutableStateOf<VideoScale?>(null) }
+    var scaleSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(videoScale) {
+        if (scaleSeen) {
+            scaleFlash = videoScale
+            delay(1_400)
+            scaleFlash = null
+        } else {
+            scaleSeen = true
+        }
+    }
 
     // Stop the stream when the app leaves the foreground; re-prepare on return.
     DisposableEffect(lifecycleOwner) {
@@ -111,6 +150,21 @@ fun LivePlayerScreen(
             .onPreviewKeyEvent { event ->
                 if (state.error != null) return@onPreviewKeyEvent false
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // While the picker is open, only LEFT closes it; everything else
+                // (UP/DOWN/OK) drives the panel's own focus navigation.
+                if (channelListVisible) {
+                    return@onPreviewKeyEvent if (event.key == Key.DirectionLeft) {
+                        viewModel.closeChannelList()
+                        true
+                    } else {
+                        false
+                    }
+                }
+                val digit = event.key.liveDigitOrNull()
+                if (digit != null) {
+                    viewModel.onDigit(digit)
+                    return@onPreviewKeyEvent true
+                }
                 when (event.key) {
                     Key.DirectionUp -> {
                         viewModel.zapNext()
@@ -118,6 +172,14 @@ fun LivePlayerScreen(
                     }
                     Key.DirectionDown -> {
                         viewModel.zapPrev()
+                        true
+                    }
+                    Key.DirectionLeft -> {
+                        viewModel.toggleChannelList()
+                        true
+                    }
+                    Key.DirectionRight -> {
+                        viewModel.cycleVideoScale()
                         true
                     }
                     Key.DirectionCenter, Key.Enter -> {
@@ -157,6 +219,7 @@ fun LivePlayerScreen(
             player = viewModel.player,
             subtitleStyle = subtitleStyle,
             modifier = Modifier.fillMaxSize(),
+            videoScale = videoScale,
         )
 
         if (state.buffering && state.error == null) {
@@ -188,11 +251,53 @@ fun LivePlayerScreen(
                 name = state.channel?.name.orEmpty(),
                 categoryName = state.categoryName,
                 nowNext = nowNext,
-                // Touch has no CH+/CH- keys: zap buttons live in the overlay.
+                // Touch has no CH+/CH- or color keys: those actions live in the
+                // overlay. TV drives them from the remote (LEFT/RIGHT/digits).
                 onZapNext = viewModel::zapNext.takeUnless { isTv },
                 onZapPrev = viewModel::zapPrev.takeUnless { isTv },
+                onOpenChannelList = viewModel::toggleChannelList.takeUnless { isTv },
+                onRecall = viewModel::zapRecall.takeUnless { isTv },
+                onCycleScale = viewModel::cycleVideoScale.takeUnless { isTv },
             )
         }
+
+        // Buffered channel digits, mirroring the Live browser's indicator.
+        if (digitBuffer.isNotEmpty()) {
+            Text(
+                text = digitBuffer,
+                style = TextStyle(
+                    brush = NovaAccentGradient,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(28.dp),
+            )
+        }
+
+        // Transient confirmation after cycling the video scale.
+        scaleFlash?.let { scale ->
+            Text(
+                text = videoScaleLabel(scale),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 26.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                    .padding(horizontal = 18.dp, vertical = 7.dp),
+            )
+        }
+
+        ChannelListPanel(
+            visible = channelListVisible && state.error == null,
+            channels = viewModel.channelList,
+            currentChannelId = state.channel?.id,
+            onSelect = viewModel::selectFromList,
+            onDismiss = viewModel::closeChannelList,
+        )
 
         state.error?.let { message ->
             Box(
@@ -223,6 +328,9 @@ private fun ChannelInfoBar(
     nowNext: EpgNowNext = EpgNowNext.EMPTY,
     onZapNext: (() -> Unit)? = null,
     onZapPrev: (() -> Unit)? = null,
+    onOpenChannelList: (() -> Unit)? = null,
+    onRecall: (() -> Unit)? = null,
+    onCycleScale: (() -> Unit)? = null,
 ) {
     Box(
         modifier = Modifier
@@ -288,6 +396,30 @@ private fun ChannelInfoBar(
                     )
                 }
             }
+            onOpenChannelList?.let {
+                ZapButton(
+                    icon = Icons.AutoMirrored.Filled.List,
+                    contentDescription = stringResource(R.string.player_channel_list),
+                    onClick = it,
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+            onRecall?.let {
+                ZapButton(
+                    icon = Icons.Default.SwapHoriz,
+                    contentDescription = stringResource(R.string.player_recall),
+                    onClick = it,
+                )
+                Spacer(Modifier.width(12.dp))
+            }
+            onCycleScale?.let {
+                ZapButton(
+                    icon = Icons.Default.AspectRatio,
+                    contentDescription = stringResource(R.string.player_video_scale),
+                    onClick = it,
+                )
+                Spacer(Modifier.width(12.dp))
+            }
             if (onZapNext != null && onZapPrev != null) {
                 ZapButton(
                     icon = Icons.Default.KeyboardArrowUp,
@@ -300,6 +432,121 @@ private fun ChannelInfoBar(
                     contentDescription = "Previous channel",
                     onClick = onZapPrev,
                 )
+            }
+        }
+    }
+}
+
+/** Localized display name of a video scaling mode. */
+@Composable
+private fun videoScaleLabel(scale: VideoScale): String = stringResource(
+    when (scale) {
+        VideoScale.FIT -> R.string.video_scale_fit
+        VideoScale.FILL -> R.string.video_scale_fill
+        VideoScale.ZOOM -> R.string.video_scale_zoom
+    },
+)
+
+/**
+ * In-player channel picker: a left-side panel over a scrim listing the current
+ * category's channels (paged). On TV the first row takes focus on open and
+ * LEFT/BACK closes; on touch, tapping the scrim dismisses. Selecting a channel
+ * zaps immediately.
+ */
+@Composable
+private fun ChannelListPanel(
+    visible: Boolean,
+    channels: Flow<PagingData<LiveChannel>>,
+    currentChannelId: Long?,
+    onSelect: (LiveChannel) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val items = channels.collectAsLazyPagingItems()
+    val firstRowFocus = remember { FocusRequester() }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
+        // Scrim: tap anywhere outside the panel to dismiss (touch).
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.45f))
+                .pointerInput(Unit) { detectTapGestures { onDismiss() } },
+        )
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn() + slideInHorizontally { -it / 3 },
+        exit = fadeOut() + slideOutHorizontally { -it / 3 },
+    ) {
+        LaunchedEffect(visible, items.itemCount) {
+            if (visible && items.itemCount > 0) runCatching { firstRowFocus.requestFocus() }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(330.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(Color.Black.copy(alpha = 0.94f), Color.Black.copy(alpha = 0.82f)),
+                    ),
+                )
+                .padding(horizontal = 18.dp, vertical = 22.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.player_channel_list),
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White,
+            )
+            Spacer(Modifier.height(12.dp))
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(
+                    count = items.itemCount,
+                    key = items.itemKey { it.id },
+                ) { index ->
+                    items[index]?.let { channel ->
+                        val current = channel.id == currentChannelId
+                        NovaClickable(
+                            onClick = { onSelect(channel) },
+                            containerColor = if (current) {
+                                MaterialTheme.colorScheme.surfaceVariant
+                            } else {
+                                Color.Transparent
+                            },
+                            focusedScale = 1.0f,
+                            accessibilityLabel = channel.name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(46.dp)
+                                .then(if (index == 0) Modifier.focusRequester(firstRowFocus) else Modifier),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 10.dp),
+                            ) {
+                                Text(
+                                    text = channel.num.toString(),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.width(46.dp),
+                                )
+                                Text(
+                                    text = channel.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = if (current) MaterialTheme.colorScheme.primary else Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }

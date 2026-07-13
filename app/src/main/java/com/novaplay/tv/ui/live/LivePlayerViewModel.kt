@@ -16,8 +16,13 @@ import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.prefs.VideoScale
 import com.novaplay.tv.ui.player.PlaybackRetryDecision
 import com.novaplay.tv.ui.player.PlaybackRetryPolicy
+import com.novaplay.tv.ui.player.PlayerDigitAction
+import com.novaplay.tv.ui.player.PlayerDigitPolicy
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -27,8 +32,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -64,7 +71,7 @@ class LivePlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
     savedStateHandle: SavedStateHandle,
     private val contentRepository: ContentRepository,
-    prefs: AppPreferences,
+    private val prefs: AppPreferences,
 ) : ViewModel() {
 
     private val initialChannelId: Long = checkNotNull(savedStateHandle["channelId"])
@@ -95,6 +102,99 @@ class LivePlayerViewModel @Inject constructor(
             if (channel == null) flowOf(EpgNowNext.EMPTY) else contentRepository.nowNext(channel, now)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpgNowNext.EMPTY)
+
+    /** Persisted video scaling mode, applied live to the player surface. */
+    val videoScale: StateFlow<VideoScale> = prefs.videoScale
+        .stateIn(viewModelScope, SharingStarted.Eagerly, VideoScale.FIT)
+
+    /** Advances FIT → FILL → ZOOM → FIT and persists the choice. */
+    fun cycleVideoScale() {
+        viewModelScope.launch { prefs.setVideoScale(videoScale.value.next()) }
+    }
+
+    // ---- in-player channel list ----
+
+    private val _channelListVisible = MutableStateFlow(false)
+    val channelListVisible: StateFlow<Boolean> = _channelListVisible.asStateFlow()
+
+    /** Channels of the current category (or all) for the in-player picker panel. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val channelList: Flow<PagingData<LiveChannel>> = _uiState
+        .map { it.channel?.playlistId }
+        .filterNotNull()
+        .distinctUntilChanged()
+        .flatMapLatest { playlistId -> contentRepository.channelsPager(playlistId, categoryId) }
+        .cachedIn(viewModelScope)
+
+    /** Shows or hides the channel picker panel. */
+    fun toggleChannelList() {
+        _channelListVisible.value = !_channelListVisible.value
+    }
+
+    /** Hides the channel picker panel. */
+    fun closeChannelList() {
+        _channelListVisible.value = false
+    }
+
+    /** Plays a channel picked from the panel; picking the current one just closes it. */
+    fun selectFromList(channel: LiveChannel) {
+        _channelListVisible.value = false
+        viewModelScope.launch {
+            zapMutex.withLock {
+                if (channel.id != _uiState.value.channel?.id) playChannel(channel)
+            }
+        }
+    }
+
+    // ---- previous-channel recall and in-player digit zap ----
+
+    private var previousChannel: LiveChannel? = null
+
+    /** Swaps back to the previously watched channel, if any. */
+    fun zapRecall() {
+        viewModelScope.launch {
+            zapMutex.withLock {
+                val target = previousChannel ?: return@withLock
+                if (target.id != _uiState.value.channel?.id) playChannel(target)
+            }
+        }
+    }
+
+    private val _digitBuffer = MutableStateFlow("")
+    val digitBuffer: StateFlow<String> = _digitBuffer.asStateFlow()
+
+    private var digitJob: Job? = null
+
+    /**
+     * Buffers a remote digit; after the commit delay the buffer resolves via
+     * [PlayerDigitPolicy] — a channel number zaps directly, a lone zero recalls
+     * the previous channel.
+     */
+    fun onDigit(digit: Char) {
+        _digitBuffer.value = (_digitBuffer.value + digit).takeLast(PlayerDigitPolicy.MAX_DIGITS)
+        digitJob?.cancel()
+        digitJob = viewModelScope.launch {
+            delay(PlayerDigitPolicy.COMMIT_DELAY_MS)
+            val action = PlayerDigitPolicy.interpret(_digitBuffer.value)
+            _digitBuffer.value = ""
+            when (action) {
+                is PlayerDigitAction.JumpToNumber -> zapMutex.withLock {
+                    val current = _uiState.value.channel ?: return@withLock
+                    val target = contentRepository.channelAtOrAfterNum(
+                        playlistId = current.playlistId,
+                        categoryId = categoryId,
+                        num = action.num,
+                    )
+                    if (target != null && target.id != current.id) playChannel(target)
+                }
+                PlayerDigitAction.Recall -> zapMutex.withLock {
+                    val target = previousChannel ?: return@withLock
+                    if (target.id != _uiState.value.channel?.id) playChannel(target)
+                }
+                PlayerDigitAction.None -> Unit
+            }
+        }
+    }
 
     private val liveFormat = prefs.liveFormat
 
@@ -257,6 +357,8 @@ class LivePlayerViewModel @Inject constructor(
     // the candidate URLs for the preferred container, and starts on the first
     // source with a fresh retry budget. Also pops the info overlay.
     private suspend fun playChannel(channel: LiveChannel) {
+        // Remember where we came from so recall ("0" / the swap button) works.
+        _uiState.value.channel?.takeIf { it.id != channel.id }?.let { previousChannel = it }
         playbackGeneration++
         cancelRecoveryJobs()
         sourceIndex = 0
