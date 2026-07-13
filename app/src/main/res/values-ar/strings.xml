@@ -44,6 +44,9 @@
     <string name="player_channel_list">القنوات</string>
     <string name="player_recall">القناة السابقة</string>
     <string name="player_video_scale">حجم الفيديو</string>
+    <string name="player_search_channels">ابحث عن قناة…</string>
+    <string name="player_volume">مستوى الصوت</string>
+    <string name="player_brightness">السطوع</string>
     <string name="video_scale_fit">ملائم</string>
     <string name="video_scale_fill">ممتد</string>
     <string name="video_scale_zoom">تكبير</string>

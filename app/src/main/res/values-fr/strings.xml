@@ -44,6 +44,9 @@
     <string name="player_channel_list">Chaînes</string>
     <string name="player_recall">Chaîne précédente</string>
     <string name="player_video_scale">Format d\'image</string>
+    <string name="player_search_channels">Rechercher des chaînes…</string>
+    <string name="player_volume">Volume</string>
+    <string name="player_brightness">Luminosité</string>
     <string name="video_scale_fit">Ajusté</string>
     <string name="video_scale_fill">Étiré</string>
     <string name="video_scale_zoom">Zoom</string>

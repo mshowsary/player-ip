@@ -1,5 +1,11 @@
 package com.novaplay.tv.ui.live
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.media.AudioManager
+import android.provider.Settings
+import android.view.Window
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -24,14 +30,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -43,6 +52,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
@@ -51,6 +61,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -78,11 +89,13 @@ import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.player.BufferingIndicator
 import com.novaplay.tv.ui.player.PlayerSurface
 import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import java.text.DateFormat
 import java.util.Date
+import kotlin.math.roundToInt
 
 /**
  * Full-screen live playback surface. D-pad UP/DOWN zap to the next/previous
@@ -100,9 +113,28 @@ fun LivePlayerScreen(
     val videoScale by viewModel.videoScale.collectAsStateWithLifecycle()
     val digitBuffer by viewModel.digitBuffer.collectAsStateWithLifecycle()
     val channelListVisible by viewModel.channelListVisible.collectAsStateWithLifecycle()
+    val panelQuery by viewModel.panelQuery.collectAsStateWithLifecycle()
+    val currentBookmarked by viewModel.currentBookmarked.collectAsStateWithLifecycle()
     val rootFocus = remember { FocusRequester() }
     val lifecycleOwner = LocalLifecycleOwner.current
     val isTv = isTvDevice()
+
+    // Volume/brightness slide adjustments (touch); HUD text mirrors each change.
+    val context = LocalContext.current
+    val adjuster = remember {
+        AvAdjuster(
+            audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager,
+            window = context.findActivity()?.window,
+            initialBrightness = { context.currentSystemBrightnessFraction() },
+        )
+    }
+    val adjustHud = adjuster.hud.value
+    LaunchedEffect(adjustHud) {
+        if (adjustHud != null) {
+            delay(900)
+            adjuster.clearHud(adjustHud)
+        }
+    }
 
     // Closing the picker restores playback key handling to the root surface.
     BackHandler(enabled = channelListVisible) { viewModel.closeChannelList() }
@@ -189,7 +221,9 @@ fun LivePlayerScreen(
                     else -> false
                 }
             }
-            // Touch: tap shows/hides the channel info, vertical swipe zaps.
+            // Touch: tap shows/hides the channel info. Vertical drags split into
+            // three zones like the well-known touch players: left edge adjusts
+            // brightness, right edge volume, and the middle swipe-zaps.
             .pointerInput(Unit) {
                 detectTapGestures {
                     if (state.error == null) viewModel.toggleOverlay()
@@ -198,14 +232,30 @@ fun LivePlayerScreen(
             .pointerInput(Unit) {
                 val threshold = 60.dp.toPx()
                 var dragTotal = 0f
+                var zone = DragZone.ZAP
                 detectVerticalDragGestures(
-                    onDragStart = { dragTotal = 0f },
+                    onDragStart = { offset ->
+                        dragTotal = 0f
+                        zone = when {
+                            offset.x < size.width / 3f -> DragZone.BRIGHTNESS
+                            offset.x > size.width * 2f / 3f -> DragZone.VOLUME
+                            else -> DragZone.ZAP
+                        }
+                    },
                     onVerticalDrag = { change, dragAmount ->
-                        dragTotal += dragAmount
                         change.consume()
+                        when (zone) {
+                            DragZone.ZAP -> dragTotal += dragAmount
+                            // Dragging the full height sweeps ~150% so a
+                            // comfortable half-screen swipe covers most of the range.
+                            DragZone.VOLUME ->
+                                adjuster.volumeBy(-dragAmount / size.height * 1.5f)
+                            DragZone.BRIGHTNESS ->
+                                adjuster.brightnessBy(-dragAmount / size.height * 1.5f)
+                        }
                     },
                     onDragEnd = {
-                        if (state.error == null) {
+                        if (zone == DragZone.ZAP && state.error == null) {
                             when {
                                 dragTotal <= -threshold -> viewModel.zapNext()
                                 dragTotal >= threshold -> viewModel.zapPrev()
@@ -251,13 +301,28 @@ fun LivePlayerScreen(
                 name = state.channel?.name.orEmpty(),
                 categoryName = state.categoryName,
                 nowNext = nowNext,
+                bookmarked = currentBookmarked,
                 // Touch has no CH+/CH- or color keys: those actions live in the
-                // overlay. TV drives them from the remote (LEFT/RIGHT/digits).
+                // overlay. TV drives them from the remote (LEFT/RIGHT/digits/0).
                 onZapNext = viewModel::zapNext.takeUnless { isTv },
                 onZapPrev = viewModel::zapPrev.takeUnless { isTv },
                 onOpenChannelList = viewModel::toggleChannelList.takeUnless { isTv },
-                onRecall = viewModel::zapRecall.takeUnless { isTv },
+                onToggleBookmark = viewModel::toggleBookmark.takeUnless { isTv },
                 onCycleScale = viewModel::cycleVideoScale.takeUnless { isTv },
+            )
+        }
+
+        // Volume/brightness HUD while (and briefly after) an edge drag.
+        adjustHud?.let { hud ->
+            Text(
+                text = "${stringResource(hud.labelRes)} ${hud.percent}%",
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 64.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                    .padding(horizontal = 18.dp, vertical = 7.dp),
             )
         }
 
@@ -295,6 +360,8 @@ fun LivePlayerScreen(
             visible = channelListVisible && state.error == null,
             channels = viewModel.channelList,
             currentChannelId = state.channel?.id,
+            query = panelQuery,
+            onQueryChange = viewModel::onPanelQueryChange,
             onSelect = viewModel::selectFromList,
             onDismiss = viewModel::closeChannelList,
         )
@@ -326,12 +393,16 @@ private fun ChannelInfoBar(
     name: String,
     categoryName: String?,
     nowNext: EpgNowNext = EpgNowNext.EMPTY,
+    bookmarked: Boolean = false,
     onZapNext: (() -> Unit)? = null,
     onZapPrev: (() -> Unit)? = null,
     onOpenChannelList: (() -> Unit)? = null,
-    onRecall: (() -> Unit)? = null,
+    onToggleBookmark: (() -> Unit)? = null,
     onCycleScale: (() -> Unit)? = null,
 ) {
+    // Narrow (portrait phone) windows can't fit the info and five buttons on
+    // one line — the action row moves under the text so nothing gets clipped.
+    val stackActions = isCompactWidth()
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -340,8 +411,12 @@ private fun ChannelInfoBar(
                     colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.85f)),
                 ),
             )
-            .padding(horizontal = 48.dp, vertical = 30.dp),
+            .padding(
+                horizontal = if (stackActions) 20.dp else 48.dp,
+                vertical = if (stackActions) 18.dp else 30.dp,
+            ),
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
@@ -396,44 +471,120 @@ private fun ChannelInfoBar(
                     )
                 }
             }
-            onOpenChannelList?.let {
-                ZapButton(
-                    icon = Icons.AutoMirrored.Filled.List,
-                    contentDescription = stringResource(R.string.player_channel_list),
-                    onClick = it,
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-            onRecall?.let {
-                ZapButton(
-                    icon = Icons.Default.SwapHoriz,
-                    contentDescription = stringResource(R.string.player_recall),
-                    onClick = it,
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-            onCycleScale?.let {
-                ZapButton(
-                    icon = Icons.Default.AspectRatio,
-                    contentDescription = stringResource(R.string.player_video_scale),
-                    onClick = it,
-                )
-                Spacer(Modifier.width(12.dp))
-            }
-            if (onZapNext != null && onZapPrev != null) {
-                ZapButton(
-                    icon = Icons.Default.KeyboardArrowUp,
-                    contentDescription = "Next channel",
-                    onClick = onZapNext,
-                )
-                Spacer(Modifier.width(12.dp))
-                ZapButton(
-                    icon = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Previous channel",
-                    onClick = onZapPrev,
+            if (!stackActions) {
+                OverlayActions(
+                    bookmarked = bookmarked,
+                    onOpenChannelList = onOpenChannelList,
+                    onToggleBookmark = onToggleBookmark,
+                    onCycleScale = onCycleScale,
+                    onZapNext = onZapNext,
+                    onZapPrev = onZapPrev,
                 )
             }
         }
+        if (stackActions) {
+            Spacer(Modifier.height(14.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                OverlayActions(
+                    bookmarked = bookmarked,
+                    onOpenChannelList = onOpenChannelList,
+                    onToggleBookmark = onToggleBookmark,
+                    onCycleScale = onCycleScale,
+                    onZapNext = onZapNext,
+                    onZapPrev = onZapPrev,
+                )
+            }
+        }
+        }
+    }
+}
+
+// The overlay's action buttons, emitted into whichever row hosts them.
+@Composable
+private fun OverlayActions(
+    bookmarked: Boolean,
+    onOpenChannelList: (() -> Unit)?,
+    onToggleBookmark: (() -> Unit)?,
+    onCycleScale: (() -> Unit)?,
+    onZapNext: (() -> Unit)?,
+    onZapPrev: (() -> Unit)?,
+) {
+    onOpenChannelList?.let {
+        ZapButton(
+            icon = Icons.AutoMirrored.Filled.List,
+            contentDescription = stringResource(R.string.player_channel_list),
+            onClick = it,
+        )
+        Spacer(Modifier.width(12.dp))
+    }
+    onToggleBookmark?.let {
+        ZapButton(
+            icon = if (bookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
+            contentDescription = stringResource(
+                if (bookmarked) R.string.action_remove_bookmark else R.string.action_add_bookmark,
+            ),
+            tint = if (bookmarked) MaterialTheme.colorScheme.primary else Color.White,
+            onClick = it,
+        )
+        Spacer(Modifier.width(12.dp))
+    }
+    onCycleScale?.let {
+        ZapButton(
+            icon = Icons.Default.AspectRatio,
+            contentDescription = stringResource(R.string.player_video_scale),
+            onClick = it,
+        )
+        Spacer(Modifier.width(12.dp))
+    }
+    if (onZapNext != null && onZapPrev != null) {
+        ZapButton(
+            icon = Icons.Default.KeyboardArrowUp,
+            contentDescription = "Next channel",
+            onClick = onZapNext,
+        )
+        Spacer(Modifier.width(12.dp))
+        ZapButton(
+            icon = Icons.Default.KeyboardArrowDown,
+            contentDescription = "Previous channel",
+            onClick = onZapPrev,
+        )
+    }
+}
+
+// Compact search input for the picker: no autofocus (scrolling is the primary
+// action; the field is one focus step above the list for those who want it).
+@Composable
+private fun PanelSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .background(Color.White.copy(alpha = 0.08f), MaterialTheme.shapes.small)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (query.isEmpty()) {
+            Text(
+                text = stringResource(R.string.player_search_channels),
+                style = MaterialTheme.typography.bodyMedium,
+                color = Color.White.copy(alpha = 0.55f),
+            )
+        }
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            modifier = Modifier.fillMaxWidth(),
+        )
     }
 }
 
@@ -458,6 +609,8 @@ private fun ChannelListPanel(
     visible: Boolean,
     channels: Flow<PagingData<LiveChannel>>,
     currentChannelId: Long?,
+    query: String,
+    onQueryChange: (String) -> Unit,
     onSelect: (LiveChannel) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -482,8 +635,15 @@ private fun ChannelListPanel(
         enter = fadeIn() + slideInHorizontally { -it / 3 },
         exit = fadeOut() + slideOutHorizontally { -it / 3 },
     ) {
+        // Focus the first row once per panel opening — never re-steal focus
+        // while search results reshuffle the list under the user's typing.
+        var focusedThisOpen by remember { mutableStateOf(false) }
+        LaunchedEffect(visible) { if (!visible) focusedThisOpen = false }
         LaunchedEffect(visible, items.itemCount) {
-            if (visible && items.itemCount > 0) runCatching { firstRowFocus.requestFocus() }
+            if (visible && !focusedThisOpen && items.itemCount > 0) {
+                focusedThisOpen = true
+                runCatching { firstRowFocus.requestFocus() }
+            }
         }
         Column(
             modifier = Modifier
@@ -501,7 +661,11 @@ private fun ChannelListPanel(
                 style = MaterialTheme.typography.titleMedium,
                 color = Color.White,
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(10.dp))
+            // Two typed characters switch the list from the current category to
+            // an FTS search across the whole playlist.
+            PanelSearchField(query = query, onQueryChange = onQueryChange)
+            Spacer(Modifier.height(10.dp))
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(
                     count = items.itemCount,
@@ -552,12 +716,85 @@ private fun ChannelListPanel(
     }
 }
 
-/** Circular translucent icon button used for touch zapping in the info overlay. */
+// Which vertical-drag zone a gesture started in.
+private enum class DragZone { BRIGHTNESS, ZAP, VOLUME }
+
+/** The label and percentage shown while sliding volume or brightness. */
+private data class AdjustHud(val labelRes: Int, val percent: Int)
+
+/**
+ * Applies edge-drag volume/brightness changes. Volume goes through the media
+ * stream; brightness overrides this window only (never the system setting).
+ * Fractions accumulate across a drag so tiny movements still make progress.
+ */
+private class AvAdjuster(
+    private val audioManager: AudioManager,
+    private val window: Window?,
+    private val initialBrightness: () -> Float,
+) {
+    val hud = mutableStateOf<AdjustHud?>(null)
+
+    private var volumeFraction = -1f
+    private var brightnessFraction = -1f
+
+    fun volumeBy(delta: Float) {
+        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        if (volumeFraction < 0f) {
+            volumeFraction = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() / max
+        }
+        volumeFraction = (volumeFraction + delta).coerceIn(0f, 1f)
+        runCatching {
+            audioManager.setStreamVolume(
+                AudioManager.STREAM_MUSIC,
+                (volumeFraction * max).roundToInt(),
+                0,
+            )
+        }
+        hud.value = AdjustHud(R.string.player_volume, (volumeFraction * 100).roundToInt())
+    }
+
+    fun brightnessBy(delta: Float) {
+        val target = window ?: return
+        if (brightnessFraction < 0f) {
+            val current = target.attributes.screenBrightness
+            brightnessFraction = if (current >= 0f) current else initialBrightness()
+        }
+        brightnessFraction = (brightnessFraction + delta).coerceIn(MIN_BRIGHTNESS, 1f)
+        target.attributes = target.attributes.apply { screenBrightness = brightnessFraction }
+        hud.value = AdjustHud(R.string.player_brightness, (brightnessFraction * 100).roundToInt())
+    }
+
+    /** Clears the HUD only if it still shows [shown] — a newer drag keeps its label. */
+    fun clearHud(shown: AdjustHud) {
+        if (hud.value == shown) hud.value = null
+    }
+
+    private companion object {
+        // Never allow a fully black screen — the user could not find the way back.
+        const val MIN_BRIGHTNESS = 0.02f
+    }
+}
+
+// Walks ContextWrappers to the hosting Activity (for window-level brightness).
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+// Current system brightness as a 0..1 fraction, for the first drag's baseline.
+private fun Context.currentSystemBrightnessFraction(): Float = runCatching {
+    Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f
+}.getOrDefault(0.5f).coerceIn(0f, 1f)
+
+/** Circular translucent icon button used for touch actions in the info overlay. */
 @Composable
 private fun ZapButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String,
     onClick: () -> Unit,
+    tint: Color = Color.White,
 ) {
     NovaClickable(
         onClick = onClick,
@@ -571,7 +808,7 @@ private fun ZapButton(
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
-            tint = Color.White,
+            tint = tint,
             modifier = Modifier
                 .align(Alignment.Center)
                 .size(32.dp),

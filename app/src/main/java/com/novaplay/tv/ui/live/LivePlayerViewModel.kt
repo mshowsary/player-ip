@@ -11,6 +11,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.prefs.AppPreferences
@@ -26,6 +27,7 @@ import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -117,28 +120,77 @@ class LivePlayerViewModel @Inject constructor(
     private val _channelListVisible = MutableStateFlow(false)
     val channelListVisible: StateFlow<Boolean> = _channelListVisible.asStateFlow()
 
-    /** Channels of the current category (or all) for the in-player picker panel. */
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val channelList: Flow<PagingData<LiveChannel>> = _uiState
-        .map { it.channel?.playlistId }
-        .filterNotNull()
-        .distinctUntilChanged()
-        .flatMapLatest { playlistId -> contentRepository.channelsPager(playlistId, categoryId) }
+    private val _panelQuery = MutableStateFlow("")
+    val panelQuery: StateFlow<String> = _panelQuery.asStateFlow()
+
+    /** Updates the picker's search text; short queries fall back to category browsing. */
+    fun onPanelQueryChange(query: String) {
+        _panelQuery.value = query
+    }
+
+    /**
+     * Channels for the in-player picker: the current category by default, or an
+     * FTS search across the whole playlist once two characters are typed —
+     * essential with multi-thousand-channel lineups.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+    val channelList: Flow<PagingData<LiveChannel>> = combine(
+        _uiState.map { it.channel?.playlistId }.filterNotNull().distinctUntilChanged(),
+        _panelQuery.debounce(300).distinctUntilChanged(),
+    ) { playlistId, query -> playlistId to query }
+        .flatMapLatest { (playlistId, query) ->
+            val fts = query.takeIf { it.length >= 2 }
+                ?.let { ContentRepository.ftsPrefixQuery(it) }
+            if (fts != null) {
+                contentRepository.searchChannelsPager(playlistId, fts)
+            } else {
+                contentRepository.channelsPager(playlistId, categoryId)
+            }
+        }
         .cachedIn(viewModelScope)
 
     /** Shows or hides the channel picker panel. */
     fun toggleChannelList() {
         _channelListVisible.value = !_channelListVisible.value
+        if (!_channelListVisible.value) _panelQuery.value = ""
     }
 
-    /** Hides the channel picker panel. */
+    /** Hides the channel picker panel and clears its search. */
     fun closeChannelList() {
         _channelListVisible.value = false
+        _panelQuery.value = ""
+    }
+
+    /** Whether the playing channel is bookmarked; drives the overlay toggle. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentBookmarked: StateFlow<Boolean> = _uiState
+        .map { it.channel }
+        .distinctUntilChanged { old, new -> old?.id == new?.id }
+        .flatMapLatest { channel ->
+            if (channel == null) {
+                flowOf(false)
+            } else {
+                contentRepository.bookmarkedIds(channel.playlistId, Bookmark.MEDIA_LIVE)
+                    .map { channel.streamId in it }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Adds or removes the playing channel from bookmarks. */
+    fun toggleBookmark() {
+        val channel = _uiState.value.channel ?: return
+        viewModelScope.launch {
+            contentRepository.toggleBookmark(
+                playlistId = channel.playlistId,
+                mediaType = Bookmark.MEDIA_LIVE,
+                remoteId = channel.streamId,
+            )
+        }
     }
 
     /** Plays a channel picked from the panel; picking the current one just closes it. */
     fun selectFromList(channel: LiveChannel) {
-        _channelListVisible.value = false
+        closeChannelList()
         viewModelScope.launch {
             zapMutex.withLock {
                 if (channel.id != _uiState.value.channel?.id) playChannel(channel)

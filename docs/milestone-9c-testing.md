@@ -30,6 +30,19 @@ develop (integrated 1.0.0-rc.1 + CI-on-develop fix)
 - No schema change. New pure policy `PlayerDigitPolicy` with JUnit tests; the
   digit-key mapping is now shared between the Live browser and the player.
 
+Tester-feedback revision (same milestone):
+
+- **Portrait overlay fixed**: on narrow windows the action buttons move to
+  their own row under the channel info — nothing is clipped anymore.
+- **Bookmark button replaces the swap button on touch**: the overlay now
+  toggles the playing channel's bookmark (filled icon when bookmarked).
+  Previous-channel recall on TV is unchanged (`0` on the remote).
+- **Search in the channel panel**: a search box above the list; from two
+  characters it searches the whole playlist (not just the category).
+- **Slide gestures on touch**: dragging the left third of the screen adjusts
+  brightness (this window only), the right third adjusts media volume, both
+  with a percentage HUD; the middle third still swipe-zaps.
+
 ## Pull and verify the branch
 
 ```powershell
@@ -71,13 +84,20 @@ which never contained it).
 
 ## Touch checks (phone)
 
-1. Tap during playback: the overlay now shows list / swap / aspect buttons
-   next to the zap arrows.
+1. Tap during playback: the overlay shows list / bookmark / aspect buttons and
+   the zap arrows. In **portrait**, the buttons sit on their own row under the
+   channel name — all five visible, nothing clipped; the channel name shows.
 2. The list button opens the panel; tapping a channel zaps; tapping the dimmed
-   area closes it.
-3. The swap button returns to the previously watched channel.
-4. The aspect button cycles the scale with the label flash; swipe zapping and
-   tap-to-toggle overlay still work.
+   area closes it. Typing two letters in the panel's search box filters across
+   the whole playlist; clearing it returns to the category list.
+3. The bookmark button toggles the playing channel's bookmark; the icon fills
+   in, and the channel appears under Bookmarks in the Live browser.
+4. The aspect button cycles the scale with the label flash; middle-screen
+   swipe zapping and tap-to-toggle overlay still work.
+5. Drag up/down on the **right third** of the screen: volume changes with a
+   percentage HUD. Drag on the **left third**: brightness changes (screen only
+   — system brightness is untouched after leaving the player). The screen can
+   never be dragged fully black.
 
 ## Regression
 
