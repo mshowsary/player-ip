@@ -18,6 +18,7 @@ import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.prefs.VideoScale
+import com.novaplay.tv.ui.player.GestureHintSession
 import com.novaplay.tv.ui.player.PlaybackRetryDecision
 import com.novaplay.tv.ui.player.PlaybackRetryPolicy
 import com.novaplay.tv.ui.player.PlayerDigitAction
@@ -75,6 +76,7 @@ class LivePlayerViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val contentRepository: ContentRepository,
     private val prefs: AppPreferences,
+    private val gestureHintSession: GestureHintSession,
 ) : ViewModel() {
 
     private val initialChannelId: Long = checkNotNull(savedStateHandle["channelId"])
@@ -110,21 +112,28 @@ class LivePlayerViewModel @Inject constructor(
     val videoScale: StateFlow<VideoScale> = prefs.videoScale
         .stateIn(viewModelScope, SharingStarted.Eagerly, VideoScale.FIT)
 
-    /** Whether touch slide gestures (volume/brightness/swipe-zap) are enabled in settings. */
+    /** Whether touch slide gestures (volume/brightness/swipe-zap) are enabled. */
     val gesturesEnabled: StateFlow<Boolean> = prefs.playerGesturesEnabled
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
-    // One-time gesture hint: pending until it has been displayed once, and only
-    // meaningful while gestures are enabled at all.
+    /** Flips the persisted gesture setting — the overlay's quick toggle. */
+    fun togglePlayerGestures() {
+        viewModelScope.launch { prefs.setPlayerGesturesEnabled(!gesturesEnabled.value) }
+    }
+
+    // Once-per-app-session gesture demo: consumed the moment it is dismissed,
+    // so zapping, reopening the player or re-toggling gestures never replays it.
+    private val hintConsumed = MutableStateFlow(gestureHintSession.shown)
     val gestureHintPending: StateFlow<Boolean> = combine(
         prefs.playerGesturesEnabled,
-        prefs.gestureHintShown,
-    ) { enabled, shown -> enabled && !shown }
+        hintConsumed,
+    ) { enabled, consumed -> enabled && !consumed }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    /** Records that the gesture hint was displayed; it never shows again. */
+    /** Records that this session's gesture demo has played. */
     fun markGestureHintShown() {
-        viewModelScope.launch { prefs.setGestureHintShown() }
+        gestureHintSession.shown = true
+        hintConsumed.value = true
     }
 
     /** Advances FIT → FILL → ZOOM → FIT and persists the choice. */

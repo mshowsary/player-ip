@@ -44,11 +44,14 @@ Tester-feedback revision (same milestone):
   with a percentage HUD; the middle third still swipe-zaps.
 - **Gestures are touch-mode only**: in TV/remote mode (including the manual
   override on a phone) drags never adjust volume/brightness — only swipe-zap.
-- **One-time gesture demo**: the first playback on touch shows three chips
-  ("↕ Brightness · ↕ Channel · ↕ Volume") for ~5 s; any tap dismisses; it
-  never appears again.
-- **Settings switch**: Settings → Live playback → "Slide gestures" (touch
-  devices only) turns all three drag gestures off; overlay buttons still work.
+- **Once-per-session gesture demo**: the first playback after each app launch
+  shows an animated finger-swipe over each of the three zones (dimmed video,
+  labelled tracks) for ~5 s; any tap dismisses it. It does NOT reappear when
+  zapping or reopening the player — only after the app is closed and reopened.
+- **Gestures quick toggle in the overlay**: a touch-only button next to the
+  aspect button flips slide gestures on/off with a confirmation flash (icon is
+  highlighted while enabled). The same setting also remains under Settings →
+  Live playback.
 
 ## Pull and verify the branch
 

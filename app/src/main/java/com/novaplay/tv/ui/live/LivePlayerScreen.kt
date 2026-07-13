@@ -8,6 +8,12 @@ import android.provider.Settings
 import android.view.Window
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -27,6 +33,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,6 +48,7 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -168,6 +176,19 @@ fun LivePlayerScreen(
             scaleFlash = null
         } else {
             scaleSeen = true
+        }
+    }
+
+    // Same pattern for the gestures quick toggle.
+    var gestureFlash by remember { mutableStateOf<Boolean?>(null) }
+    var gestureSeen by remember { mutableStateOf(false) }
+    LaunchedEffect(gesturesEnabled) {
+        if (gestureSeen) {
+            gestureFlash = gesturesEnabled
+            delay(1_400)
+            gestureFlash = null
+        } else {
+            gestureSeen = true
         }
     }
 
@@ -328,6 +349,7 @@ fun LivePlayerScreen(
                 categoryName = state.categoryName,
                 nowNext = nowNext,
                 bookmarked = currentBookmarked,
+                gesturesEnabled = gesturesEnabled,
                 // Touch has no CH+/CH- or color keys: those actions live in the
                 // overlay. TV drives them from the remote (LEFT/RIGHT/digits/0).
                 onZapNext = viewModel::zapNext.takeUnless { isTv },
@@ -335,25 +357,18 @@ fun LivePlayerScreen(
                 onOpenChannelList = viewModel::toggleChannelList.takeUnless { isTv },
                 onToggleBookmark = viewModel::toggleBookmark.takeUnless { isTv },
                 onCycleScale = viewModel::cycleVideoScale.takeUnless { isTv },
+                onToggleGestures = viewModel::togglePlayerGestures.takeUnless { isTv },
             )
         }
 
-        // One-time gesture demo: one chip per drag zone, mirroring their layout.
+        // Once-per-session gesture demo: an animated finger swipe over each of
+        // the three drag zones, dimming the video underneath.
         AnimatedVisibility(
             visible = hintVisible && !isTv && gesturesEnabled && state.error == null,
             enter = fadeIn(),
             exit = fadeOut(),
-            modifier = Modifier.align(Alignment.Center),
         ) {
-            Row(
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                GestureHintChip(text = "↕ " + stringResource(R.string.player_brightness))
-                GestureHintChip(text = "↕ " + stringResource(R.string.player_hint_channel))
-                GestureHintChip(text = "↕ " + stringResource(R.string.player_volume))
-            }
+            GestureDemo()
         }
 
         // Volume/brightness HUD while (and briefly after) an edge drag.
@@ -390,6 +405,22 @@ fun LivePlayerScreen(
         scaleFlash?.let { scale ->
             Text(
                 text = videoScaleLabel(scale),
+                style = MaterialTheme.typography.titleSmall,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = 26.dp)
+                    .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                    .padding(horizontal = 18.dp, vertical = 7.dp),
+            )
+        }
+
+        // Transient confirmation after flipping the gestures quick toggle.
+        gestureFlash?.let { enabled ->
+            Text(
+                text = stringResource(
+                    if (enabled) R.string.player_gestures_on else R.string.player_gestures_off,
+                ),
                 style = MaterialTheme.typography.titleSmall,
                 color = Color.White,
                 modifier = Modifier
@@ -438,11 +469,13 @@ private fun ChannelInfoBar(
     categoryName: String?,
     nowNext: EpgNowNext = EpgNowNext.EMPTY,
     bookmarked: Boolean = false,
+    gesturesEnabled: Boolean = true,
     onZapNext: (() -> Unit)? = null,
     onZapPrev: (() -> Unit)? = null,
     onOpenChannelList: (() -> Unit)? = null,
     onToggleBookmark: (() -> Unit)? = null,
     onCycleScale: (() -> Unit)? = null,
+    onToggleGestures: (() -> Unit)? = null,
 ) {
     // Narrow (portrait phone) windows can't fit the info and five buttons on
     // one line — the action row moves under the text so nothing gets clipped.
@@ -518,9 +551,11 @@ private fun ChannelInfoBar(
             if (!stackActions) {
                 OverlayActions(
                     bookmarked = bookmarked,
+                    gesturesEnabled = gesturesEnabled,
                     onOpenChannelList = onOpenChannelList,
                     onToggleBookmark = onToggleBookmark,
                     onCycleScale = onCycleScale,
+                    onToggleGestures = onToggleGestures,
                     onZapNext = onZapNext,
                     onZapPrev = onZapPrev,
                 )
@@ -535,9 +570,11 @@ private fun ChannelInfoBar(
             ) {
                 OverlayActions(
                     bookmarked = bookmarked,
+                    gesturesEnabled = gesturesEnabled,
                     onOpenChannelList = onOpenChannelList,
                     onToggleBookmark = onToggleBookmark,
                     onCycleScale = onCycleScale,
+                    onToggleGestures = onToggleGestures,
                     onZapNext = onZapNext,
                     onZapPrev = onZapPrev,
                 )
@@ -551,9 +588,11 @@ private fun ChannelInfoBar(
 @Composable
 private fun OverlayActions(
     bookmarked: Boolean,
+    gesturesEnabled: Boolean,
     onOpenChannelList: (() -> Unit)?,
     onToggleBookmark: (() -> Unit)?,
     onCycleScale: (() -> Unit)?,
+    onToggleGestures: (() -> Unit)?,
     onZapNext: (() -> Unit)?,
     onZapPrev: (() -> Unit)?,
 ) {
@@ -580,6 +619,17 @@ private fun OverlayActions(
         ZapButton(
             icon = Icons.Default.AspectRatio,
             contentDescription = stringResource(R.string.player_video_scale),
+            onClick = it,
+        )
+        Spacer(Modifier.width(12.dp))
+    }
+    onToggleGestures?.let {
+        ZapButton(
+            icon = Icons.Default.TouchApp,
+            contentDescription = stringResource(
+                if (gesturesEnabled) R.string.player_gestures_on else R.string.player_gestures_off,
+            ),
+            tint = if (gesturesEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.55f),
             onClick = it,
         )
         Spacer(Modifier.width(12.dp))
@@ -632,17 +682,90 @@ private fun PanelSearchField(
     }
 }
 
-// One pill of the first-run gesture demo.
+// The once-per-session gesture demo: three columns matching the drag zones,
+// each with an animated finger dot sweeping its track.
 @Composable
-private fun GestureHintChip(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.titleSmall,
-        color = Color.White,
+private fun GestureDemo() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
-            .background(Color.Black.copy(alpha = 0.65f), CircleShape)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.40f)),
+    ) {
+        DemoZone(label = stringResource(R.string.player_brightness), modifier = Modifier.weight(1f))
+        DemoZone(label = stringResource(R.string.player_hint_channel), modifier = Modifier.weight(1f))
+        DemoZone(label = stringResource(R.string.player_volume), modifier = Modifier.weight(1f))
+    }
+}
+
+// One demo zone: the swipe animation above a labelled pill.
+@Composable
+private fun DemoZone(label: String, modifier: Modifier = Modifier) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier,
+    ) {
+        SwipeFinger()
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.titleSmall,
+            color = Color.White,
+            modifier = Modifier
+                .background(Color.Black.copy(alpha = 0.65f), CircleShape)
+                .padding(horizontal = 14.dp, vertical = 6.dp),
+        )
+    }
+}
+
+// A finger dot sweeping up and down a vertical track between two arrows.
+@Composable
+private fun SwipeFinger() {
+    val transition = rememberInfiniteTransition(label = "swipeDemo")
+    val travel by transition.animateFloat(
+        initialValue = -1f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "swipeTravel",
     )
+    Box(
+        modifier = Modifier
+            .height(96.dp)
+            .width(40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .fillMaxHeight()
+                .background(Color.White.copy(alpha = 0.18f), CircleShape),
+        )
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowUp,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.65f),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .size(18.dp),
+        )
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowDown,
+            contentDescription = null,
+            tint = Color.White.copy(alpha = 0.65f),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .size(18.dp),
+        )
+        Box(
+            modifier = Modifier
+                .offset(y = (travel * 26).dp)
+                .size(16.dp)
+                .background(Color.White.copy(alpha = 0.95f), CircleShape),
+        )
+    }
 }
 
 /** Localized display name of a video scaling mode. */

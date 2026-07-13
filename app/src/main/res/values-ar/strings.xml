@@ -48,6 +48,8 @@
     <string name="player_volume">مستوى الصوت</string>
     <string name="player_brightness">السطوع</string>
     <string name="player_hint_channel">القناة</string>
+    <string name="player_gestures_on">الإيماءات مفعّلة</string>
+    <string name="player_gestures_off">الإيماءات معطّلة</string>
     <string name="video_scale_fit">ملائم</string>
     <string name="video_scale_fill">ممتد</string>
     <string name="video_scale_zoom">تكبير</string>

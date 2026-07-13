@@ -48,6 +48,8 @@
     <string name="player_volume">Volume</string>
     <string name="player_brightness">Luminosité</string>
     <string name="player_hint_channel">Chaîne</string>
+    <string name="player_gestures_on">Gestes activés</string>
+    <string name="player_gestures_off">Gestes désactivés</string>
     <string name="video_scale_fit">Ajusté</string>
     <string name="video_scale_fill">Étiré</string>
     <string name="video_scale_zoom">Zoom</string>
