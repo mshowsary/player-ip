@@ -155,6 +155,16 @@ interface LiveDao {
     )
     suspend fun lastChannel(playlistId: Long, categoryId: Long?): LiveChannel?
 
+    // In-player digit zap: the first channel at or after :num in browse order,
+    // falling back to the last channel when the number is beyond the lineup.
+    @Query(
+        """SELECT * FROM live_channels
+           WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND num >= :num
+           ORDER BY num, id LIMIT 1""",
+    )
+    suspend fun channelAtOrAfterNum(playlistId: Long, categoryId: Long?, num: Int): LiveChannel?
+
     // Digit-jump: list index of the first channel whose num >= :num.
     @Query(
         """SELECT COUNT(*) FROM live_channels

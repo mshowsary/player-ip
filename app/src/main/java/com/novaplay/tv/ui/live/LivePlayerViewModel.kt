@@ -11,24 +11,35 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.prefs.VideoScale
+import com.novaplay.tv.ui.player.GestureHintSession
 import com.novaplay.tv.ui.player.PlaybackRetryDecision
 import com.novaplay.tv.ui.player.PlaybackRetryPolicy
+import com.novaplay.tv.ui.player.PlayerDigitAction
+import com.novaplay.tv.ui.player.PlayerDigitPolicy
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -64,7 +75,8 @@ class LivePlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
     savedStateHandle: SavedStateHandle,
     private val contentRepository: ContentRepository,
-    prefs: AppPreferences,
+    private val prefs: AppPreferences,
+    private val gestureHintSession: GestureHintSession,
 ) : ViewModel() {
 
     private val initialChannelId: Long = checkNotNull(savedStateHandle["channelId"])
@@ -95,6 +107,172 @@ class LivePlayerViewModel @Inject constructor(
             if (channel == null) flowOf(EpgNowNext.EMPTY) else contentRepository.nowNext(channel, now)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), EpgNowNext.EMPTY)
+
+    /** Persisted video scaling mode, applied live to the player surface. */
+    val videoScale: StateFlow<VideoScale> = prefs.videoScale
+        .stateIn(viewModelScope, SharingStarted.Eagerly, VideoScale.FIT)
+
+    /** Whether touch slide gestures (volume/brightness/swipe-zap) are enabled. */
+    val gesturesEnabled: StateFlow<Boolean> = prefs.playerGesturesEnabled
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    /** Flips the persisted gesture setting — the overlay's quick toggle. */
+    fun togglePlayerGestures() {
+        viewModelScope.launch { prefs.setPlayerGesturesEnabled(!gesturesEnabled.value) }
+    }
+
+    // Once-per-app-session gesture demo: consumed the moment it is dismissed,
+    // so zapping, reopening the player or re-toggling gestures never replays it.
+    private val hintConsumed = MutableStateFlow(gestureHintSession.shown)
+    val gestureHintPending: StateFlow<Boolean> = combine(
+        prefs.playerGesturesEnabled,
+        hintConsumed,
+    ) { enabled, consumed -> enabled && !consumed }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Records that this session's gesture demo has played. */
+    fun markGestureHintShown() {
+        gestureHintSession.shown = true
+        hintConsumed.value = true
+    }
+
+    /** Advances FIT → FILL → ZOOM → FIT and persists the choice. */
+    fun cycleVideoScale() {
+        viewModelScope.launch { prefs.setVideoScale(videoScale.value.next()) }
+    }
+
+    // ---- in-player channel list ----
+
+    private val _channelListVisible = MutableStateFlow(false)
+    val channelListVisible: StateFlow<Boolean> = _channelListVisible.asStateFlow()
+
+    private val _panelQuery = MutableStateFlow("")
+    val panelQuery: StateFlow<String> = _panelQuery.asStateFlow()
+
+    /** Updates the picker's search text; short queries fall back to category browsing. */
+    fun onPanelQueryChange(query: String) {
+        _panelQuery.value = query
+    }
+
+    /**
+     * Channels for the in-player picker: the current category by default, or an
+     * FTS search across the whole playlist once two characters are typed —
+     * essential with multi-thousand-channel lineups.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
+    val channelList: Flow<PagingData<LiveChannel>> = combine(
+        _uiState.map { it.channel?.playlistId }.filterNotNull().distinctUntilChanged(),
+        _panelQuery.debounce(300).distinctUntilChanged(),
+    ) { playlistId, query -> playlistId to query }
+        .flatMapLatest { (playlistId, query) ->
+            val fts = query.takeIf { it.length >= 2 }
+                ?.let { ContentRepository.ftsPrefixQuery(it) }
+            if (fts != null) {
+                contentRepository.searchChannelsPager(playlistId, fts)
+            } else {
+                contentRepository.channelsPager(playlistId, categoryId)
+            }
+        }
+        .cachedIn(viewModelScope)
+
+    /** Shows or hides the channel picker panel. */
+    fun toggleChannelList() {
+        _channelListVisible.value = !_channelListVisible.value
+        if (!_channelListVisible.value) _panelQuery.value = ""
+    }
+
+    /** Hides the channel picker panel and clears its search. */
+    fun closeChannelList() {
+        _channelListVisible.value = false
+        _panelQuery.value = ""
+    }
+
+    /** Whether the playing channel is bookmarked; drives the overlay toggle. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val currentBookmarked: StateFlow<Boolean> = _uiState
+        .map { it.channel }
+        .distinctUntilChanged { old, new -> old?.id == new?.id }
+        .flatMapLatest { channel ->
+            if (channel == null) {
+                flowOf(false)
+            } else {
+                contentRepository.bookmarkedIds(channel.playlistId, Bookmark.MEDIA_LIVE)
+                    .map { channel.streamId in it }
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Adds or removes the playing channel from bookmarks. */
+    fun toggleBookmark() {
+        val channel = _uiState.value.channel ?: return
+        viewModelScope.launch {
+            contentRepository.toggleBookmark(
+                playlistId = channel.playlistId,
+                mediaType = Bookmark.MEDIA_LIVE,
+                remoteId = channel.streamId,
+            )
+        }
+    }
+
+    /** Plays a channel picked from the panel; picking the current one just closes it. */
+    fun selectFromList(channel: LiveChannel) {
+        closeChannelList()
+        viewModelScope.launch {
+            zapMutex.withLock {
+                if (channel.id != _uiState.value.channel?.id) playChannel(channel)
+            }
+        }
+    }
+
+    // ---- previous-channel recall and in-player digit zap ----
+
+    private var previousChannel: LiveChannel? = null
+
+    /** Swaps back to the previously watched channel, if any. */
+    fun zapRecall() {
+        viewModelScope.launch {
+            zapMutex.withLock {
+                val target = previousChannel ?: return@withLock
+                if (target.id != _uiState.value.channel?.id) playChannel(target)
+            }
+        }
+    }
+
+    private val _digitBuffer = MutableStateFlow("")
+    val digitBuffer: StateFlow<String> = _digitBuffer.asStateFlow()
+
+    private var digitJob: Job? = null
+
+    /**
+     * Buffers a remote digit; after the commit delay the buffer resolves via
+     * [PlayerDigitPolicy] — a channel number zaps directly, a lone zero recalls
+     * the previous channel.
+     */
+    fun onDigit(digit: Char) {
+        _digitBuffer.value = (_digitBuffer.value + digit).takeLast(PlayerDigitPolicy.MAX_DIGITS)
+        digitJob?.cancel()
+        digitJob = viewModelScope.launch {
+            delay(PlayerDigitPolicy.COMMIT_DELAY_MS)
+            val action = PlayerDigitPolicy.interpret(_digitBuffer.value)
+            _digitBuffer.value = ""
+            when (action) {
+                is PlayerDigitAction.JumpToNumber -> zapMutex.withLock {
+                    val current = _uiState.value.channel ?: return@withLock
+                    val target = contentRepository.channelAtOrAfterNum(
+                        playlistId = current.playlistId,
+                        categoryId = categoryId,
+                        num = action.num,
+                    )
+                    if (target != null && target.id != current.id) playChannel(target)
+                }
+                PlayerDigitAction.Recall -> zapMutex.withLock {
+                    val target = previousChannel ?: return@withLock
+                    if (target.id != _uiState.value.channel?.id) playChannel(target)
+                }
+                PlayerDigitAction.None -> Unit
+            }
+        }
+    }
 
     private val liveFormat = prefs.liveFormat
 
@@ -257,6 +435,8 @@ class LivePlayerViewModel @Inject constructor(
     // the candidate URLs for the preferred container, and starts on the first
     // source with a fresh retry budget. Also pops the info overlay.
     private suspend fun playChannel(channel: LiveChannel) {
+        // Remember where we came from so recall ("0" / the swap button) works.
+        _uiState.value.channel?.takeIf { it.id != channel.id }?.let { previousChannel = it }
         playbackGeneration++
         cancelRecoveryJobs()
         sourceIndex = 0

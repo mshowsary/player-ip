@@ -83,6 +83,7 @@ fun PolishedSettingsScreen(
     val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val liveFormat by viewModel.liveFormat.collectAsStateWithLifecycle()
+    val playerGestures by viewModel.playerGesturesEnabled.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val deviceInfo by viewModel.deviceInfo.collectAsStateWithLifecycle()
     val cacheCleared by viewModel.cacheCleared.collectAsStateWithLifecycle()
@@ -124,7 +125,15 @@ fun PolishedSettingsScreen(
                         onDebugPreset = viewModel::setDebugManagedPolicy,
                     )
                 }
-                item { PlaybackPanel(liveFormat, viewModel::setLiveFormat) }
+                item {
+                    PlaybackPanel(
+                        format = liveFormat,
+                        gesturesEnabled = playerGestures,
+                        showGestureChoice = !isTv,
+                        onSelect = viewModel::setLiveFormat,
+                        onSetGestures = viewModel::setPlayerGesturesEnabled,
+                    )
+                }
                 item {
                     MaintenancePanel(
                         syncStatus,
@@ -162,7 +171,15 @@ fun PolishedSettingsScreen(
                             onDebugPreset = viewModel::setDebugManagedPolicy,
                         )
                     }
-                    item { PlaybackPanel(liveFormat, viewModel::setLiveFormat) }
+                    item {
+                        PlaybackPanel(
+                            format = liveFormat,
+                            gesturesEnabled = playerGestures,
+                            showGestureChoice = !isTv,
+                            onSelect = viewModel::setLiveFormat,
+                            onSetGestures = viewModel::setPlayerGesturesEnabled,
+                        )
+                    }
                     item {
                         MaintenancePanel(
                             syncStatus,
@@ -337,7 +354,10 @@ private fun AccessServiceRow(label: String, allowed: Boolean) {
 @Composable
 private fun PlaybackPanel(
     format: LiveFormat,
+    gesturesEnabled: Boolean,
+    showGestureChoice: Boolean,
     onSelect: (LiveFormat) -> Unit,
+    onSetGestures: (Boolean) -> Unit,
 ) {
     SettingsPanel(
         title = "Live playback",
@@ -349,6 +369,15 @@ private fun PlaybackPanel(
             selectedIndex = format.ordinal,
             onSelect = { onSelect(LiveFormat.entries[it]) },
         )
+        // Touch-only: TV playback is remote-driven, so the choice is hidden there.
+        if (showGestureChoice) {
+            ChoiceGroup(
+                label = "Slide gestures (volume, brightness, channel swipe)",
+                options = listOf("On", "Off"),
+                selectedIndex = if (gesturesEnabled) 0 else 1,
+                onSelect = { onSetGestures(it == 0) },
+            )
+        }
     }
 }
 

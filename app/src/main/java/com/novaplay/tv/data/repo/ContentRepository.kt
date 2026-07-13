@@ -101,6 +101,11 @@ class ContentRepository @Inject constructor(
     suspend fun positionOfChannelNum(playlistId: Long, categoryId: Long?, num: Int): Int =
         db.liveDao().positionOfNum(playlistId, categoryId, num)
 
+    /** In-player digit zap target: the channel at or after [num], or the last channel beyond the lineup. */
+    suspend fun channelAtOrAfterNum(playlistId: Long, categoryId: Long?, num: Int): LiveChannel? =
+        db.liveDao().channelAtOrAfterNum(playlistId, categoryId, num)
+            ?: db.liveDao().lastChannel(playlistId, categoryId)
+
     // Candidate URLs in retry order for a live channel, honoring the format setting.
     suspend fun liveStreamUrls(channel: LiveChannel, format: LiveFormat): List<String> {
         channel.urlOverride?.let { return listOf(it) }

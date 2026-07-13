@@ -15,11 +15,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.PlayerView
 import androidx.tv.material3.MaterialTheme
 import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleStyle
+import com.novaplay.tv.data.prefs.VideoScale
 
 // Video surface shared by the live and VOD players. Controller is disabled —
 // all controls are Compose overlays. Subtitle appearance is applied globally
@@ -30,6 +32,7 @@ fun PlayerSurface(
     player: Player,
     subtitleStyle: SubtitleStyle,
     modifier: Modifier = Modifier,
+    videoScale: VideoScale = VideoScale.FIT,
 ) {
     AndroidView(
         factory = { context ->
@@ -43,6 +46,11 @@ fun PlayerSurface(
         },
         update = { view ->
             view.player = player
+            view.resizeMode = when (videoScale) {
+                VideoScale.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                VideoScale.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                VideoScale.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
             view.subtitleView?.apply {
                 // Ignore styles baked into the stream so user settings always win.
                 setApplyEmbeddedStyles(false)

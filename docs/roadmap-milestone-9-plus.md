@@ -12,15 +12,17 @@ the same commit.
 
 ## Phase 1 — Competitive core
 
-| Milestone | Scope |
-| --- | --- |
-| 9A EPG foundation | XMLTV + Xtream EPG data layer: schema v4, streaming parser, sync integration, now/next on channel rows and player overlay |
-| 9B EPG guide UI | TV-style grid guide (D-pad first), touch guide, programme details |
-| 9C Catch-up | Xtream `tv_archive` support: archive indicators, programme picker, archive playback |
-| 9D Live player UX | In-player channel list overlay, previous-channel switch, favorites surfaced as a first-class rail, live track/subtitle selection, aspect-ratio modes |
+| Milestone | Scope | Status |
+| --- | --- | --- |
+| 9A EPG foundation | XMLTV + Xtream EPG data layer: schema v4, streaming parser, sync integration, now/next on channel rows and player overlay | Integrated into develop (PR #24) |
+| 9B EPG guide UI | TV-style grid guide (D-pad first), touch guide, programme details | **Shelved** — built and physically tested (PR #26, closed unmerged); the target audience's providers generally don't supply EPG data, so a top-level Guide would sit unused. Revivable for white-label markets that want it. |
+| 9C Live player UX | In-player channel list panel, previous-channel recall, in-player digit zapping, video scale modes (fit/stretch/zoom) | In progress |
+| Deferred: Catch-up | Xtream `tv_archive` archive playback — depends on EPG programme data, deferred with 9B for the same market reason | Shelved |
+| Deferred: Live track selection | Audio/subtitle picker for live streams (VOD already has one) | Candidate for a later milestone |
 
-Rationale: EPG is the first feature providers evaluate; without a guide the app is
-not competitive regardless of polish.
+Rationale (updated): the 9A data layer stays — now/next lines cost no screen
+space and simply don't render for providers without EPG. Guide-shaped UI waits
+for a market that has guide data; day-to-day zapping ergonomics come first.
 
 ## Phase 2 — Performance and polish
 

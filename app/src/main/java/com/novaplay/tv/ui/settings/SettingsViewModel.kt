@@ -81,6 +81,9 @@ class SettingsViewModel @Inject constructor(
     val liveFormat: StateFlow<LiveFormat> = prefs.liveFormat
         .stateIn(viewModelScope, SharingStarted.Eagerly, LiveFormat.AUTO)
 
+    val playerGesturesEnabled: StateFlow<Boolean> = prefs.playerGesturesEnabled
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
     val backgroundSyncMode: StateFlow<BackgroundSyncMode> = prefs.backgroundSyncMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, BackgroundSyncMode.DAILY)
 
@@ -135,6 +138,11 @@ class SettingsViewModel @Inject constructor(
     /** Persists the preferred live stream format (auto, HLS or MPEG-TS). */
     fun setLiveFormat(format: LiveFormat) {
         viewModelScope.launch { prefs.setLiveFormat(format) }
+    }
+
+    /** Enables or disables the touch playback slide gestures. */
+    fun setPlayerGesturesEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setPlayerGesturesEnabled(enabled) }
     }
 
     /**

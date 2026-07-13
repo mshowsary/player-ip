@@ -29,6 +29,17 @@ enum class LiveFormat(val label: String) {
     TS("MPEG-TS"),
 }
 
+/** How live video fills the screen; cycled from the player and persisted. */
+enum class VideoScale {
+    FIT,
+    FILL,
+    ZOOM,
+    ;
+
+    /** The next mode in FIT → FILL → ZOOM → FIT order. */
+    fun next(): VideoScale = entries[(ordinal + 1) % entries.size]
+}
+
 /** Background refresh cadence; a null [intervalHours] means no work is scheduled at all. */
 enum class BackgroundSyncMode(
     val label: String,
@@ -120,6 +131,8 @@ class AppPreferences @Inject constructor(
         val DEVICE_KEY = stringPreferencesKey("device_key")
         val UI_MODE = stringPreferencesKey("ui_mode")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
+        val VIDEO_SCALE = stringPreferencesKey("video_scale")
+        val PLAYER_GESTURES = booleanPreferencesKey("player_gestures_enabled")
         val BACKGROUND_SYNC_MODE = stringPreferencesKey("background_sync_mode")
         val SUB_SIZE = stringPreferencesKey("sub_size")
         val SUB_COLOR = stringPreferencesKey("sub_color")
@@ -187,6 +200,25 @@ class AppPreferences @Inject constructor(
     /** Stores the live-stream container preference; applies to newly started playback. */
     suspend fun setLiveFormat(format: LiveFormat) {
         context.dataStore.edit { it[Keys.LIVE_FORMAT] = format.name }
+    }
+
+    val videoScale: Flow<VideoScale> = context.dataStore.data
+        .map { it[Keys.VIDEO_SCALE].toEnum(VideoScale.FIT) }
+        .distinctUntilChanged()
+
+    /** Persists the live-player scaling mode; applies immediately via [videoScale] collectors. */
+    suspend fun setVideoScale(scale: VideoScale) {
+        context.dataStore.edit { it[Keys.VIDEO_SCALE] = scale.name }
+    }
+
+    /** Whether touch playback slide gestures (volume/brightness/swipe-zap) are active. */
+    val playerGesturesEnabled: Flow<Boolean> = context.dataStore.data
+        .map { it[Keys.PLAYER_GESTURES] ?: true }
+        .distinctUntilChanged()
+
+    /** Enables or disables the touch playback slide gestures. */
+    suspend fun setPlayerGesturesEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.PLAYER_GESTURES] = enabled }
     }
 
     val backgroundSyncMode: Flow<BackgroundSyncMode> = context.dataStore.data
