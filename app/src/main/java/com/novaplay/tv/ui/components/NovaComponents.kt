@@ -34,8 +34,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -88,6 +90,7 @@ fun NovaClickable(
     val currentOnLongClick by rememberUpdatedState(onLongClick)
     val touchFocusRequester = remember { FocusRequester() }
     val isTv = isTvDevice()
+    val haptics = LocalHapticFeedback.current
 
     Surface(
         onClick = onClick,
@@ -116,7 +119,12 @@ fun NovaClickable(
                     },
                     onTap = { currentOnClick() },
                     onLongPress = if (onLongClick != null) {
-                        { currentOnLongClick?.invoke() }
+                        {
+                            // Long-press has no visual moment of its own — the
+                            // haptic tick is what tells the finger it landed.
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            currentOnLongClick?.invoke()
+                        }
                     } else {
                         null
                     },
@@ -132,7 +140,13 @@ fun NovaClickable(
             pressedContainerColor = focusedContainerColor,
             pressedContentColor = MaterialTheme.colorScheme.onSurface,
         ),
-        scale = ClickableSurfaceDefaults.scale(focusedScale = focusedScale),
+        // The press dip is the Material touch cue: fingers get motion feedback
+        // on every surface. On TV the press happens while focused, so it only
+        // settles the focused scale slightly instead of the full touch dip.
+        scale = ClickableSurfaceDefaults.scale(
+            focusedScale = focusedScale,
+            pressedScale = if (isTv) (focusedScale - 0.03f).coerceAtLeast(1f) else 0.96f,
+        ),
         border = ClickableSurfaceDefaults.border(
             // Hairline edge at rest gives panels definition on the deep
             // backdrop; focus swaps it for the full accent treatment.
