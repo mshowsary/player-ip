@@ -30,6 +30,8 @@ import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.data.repo.SyncTrigger
+import com.novaplay.tv.data.repo.UpdateCheckState
+import com.novaplay.tv.data.repo.UpdateRepository
 import com.novaplay.tv.di.ApplicationScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -68,9 +70,26 @@ class SettingsViewModel @Inject constructor(
     private val managedAccessRepository: ManagedAccessRepository,
     private val backgroundSyncScheduler: BackgroundSyncScheduler,
     private val diagnosticsRepository: AppDiagnosticsRepository,
+    private val updateRepository: UpdateRepository,
     deviceIdentity: DeviceIdentity,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
+
+    private val _updateState = MutableStateFlow(
+        if (updateRepository.enabled) UpdateCheckState.Idle else UpdateCheckState.Disabled,
+    )
+
+    /** Sideload update-channel state for the "This device" panel. */
+    val updateState: StateFlow<UpdateCheckState> = _updateState.asStateFlow()
+
+    /** Runs one manifest check; re-entry while checking is ignored. */
+    fun checkForUpdates() {
+        if (_updateState.value == UpdateCheckState.Checking) return
+        viewModelScope.launch {
+            _updateState.value = UpdateCheckState.Checking
+            _updateState.value = updateRepository.check()
+        }
+    }
 
     val uiMode: StateFlow<UiModePreference> = prefs.uiMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiModePreference.AUTO)

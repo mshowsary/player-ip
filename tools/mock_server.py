@@ -225,6 +225,15 @@ class Handler(BaseHTTPRequestHandler):
                 }})
             else:
                 self.send_json([])
+        elif path == "/updates.json":
+            # Sideload update manifest: version_code above any dev build so the
+            # in-app checker always finds an "update" against this server.
+            self.send_json({
+                "version_code": 99000000,
+                "version_name": "99.0.0-mock",
+                "apk_url": "http://10.0.2.2:8899/direct/update.apk",
+                "notes": "Mock update served by tools/mock_server.py.",
+            })
         elif path == "/xmltv.php":
             body = build_xmltv()
             self.send_response(200)
