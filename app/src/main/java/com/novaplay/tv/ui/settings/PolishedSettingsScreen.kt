@@ -1,4 +1,4 @@
-package com.novaplay.tv.ui.settings
+﻿package com.novaplay.tv.ui.settings
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
 import com.novaplay.tv.data.prefs.SubtitleColor
@@ -81,6 +82,7 @@ fun PolishedSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
+    val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val liveFormat by viewModel.liveFormat.collectAsStateWithLifecycle()
     val playerGestures by viewModel.playerGesturesEnabled.collectAsStateWithLifecycle()
@@ -116,7 +118,7 @@ fun PolishedSettingsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
+                item { InterfacePanel(uiMode, homeLayout, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout) }
                 item {
                     ManagedAccessPanel(
                         policy = managedAccess,
@@ -162,7 +164,7 @@ fun PolishedSettingsScreen(
                         .weight(1f)
                         .fillMaxHeight(),
                 ) {
-                    item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
+                    item { InterfacePanel(uiMode, homeLayout, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout) }
                     item {
                         ManagedAccessPanel(
                             policy = managedAccess,
@@ -223,8 +225,10 @@ fun PolishedSettingsScreen(
 @Composable
 private fun InterfacePanel(
     mode: UiModePreference,
+    homeLayout: HomeLayout,
     firstFocus: FocusRequester,
     onSelect: (UiModePreference) -> Unit,
+    onSelectHomeLayout: (HomeLayout) -> Unit,
 ) {
     SettingsPanel(
         title = "Interface",
@@ -242,6 +246,22 @@ private fun InterfacePanel(
                 UiModePreference.AUTO -> "Using automatic device and window detection"
                 UiModePreference.TOUCH -> "Touch navigation is forced on this device"
                 UiModePreference.TV -> "Remote-first TV navigation is forced on this device"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        // Applies instantly, so layouts can be compared live on the device.
+        ChoiceGroup(
+            label = "Home layout",
+            options = HomeLayout.entries.map { it.label },
+            selectedIndex = homeLayout.ordinal,
+            onSelect = { onSelectHomeLayout(HomeLayout.entries[it]) },
+        )
+        Text(
+            text = when (homeLayout) {
+                HomeLayout.CLASSIC -> "Equal cards in an adaptive grid"
+                HomeLayout.HERO -> "A dominant Live TV panel with sections beside it"
+                HomeLayout.ROWS -> "Full-width rows, leanest for remotes"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
@@ -398,7 +418,7 @@ private fun MaintenancePanel(
     ) {
         NovaButton(
             text = when (status) {
-                is SyncStatus.Syncing -> "Syncing ${status.step}…"
+                is SyncStatus.Syncing -> "Syncing ${status.step}â€¦"
                 else -> "Re-sync active playlist"
             },
             onClick = onSync,
@@ -413,7 +433,7 @@ private fun MaintenancePanel(
             )
         }
         NovaButton(
-            text = if (cacheCleared) "Image cache cleared ✓" else "Clear image cache",
+            text = if (cacheCleared) "Image cache cleared âœ“" else "Clear image cache",
             onClick = onClearCache,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -669,7 +689,7 @@ private fun DeviceInfoRow(label: String, value: String) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = value.ifBlank { "—" },
+            text = value.ifBlank { "â€”" },
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.End,
             maxLines = 1,

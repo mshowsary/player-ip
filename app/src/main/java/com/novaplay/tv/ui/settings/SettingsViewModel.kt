@@ -11,6 +11,7 @@ import com.novaplay.tv.background.BackgroundSyncScheduler
 import com.novaplay.tv.core.DeviceIdentity
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.BackgroundSyncMode
+import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LastSyncSummary
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
@@ -75,6 +76,9 @@ class SettingsViewModel @Inject constructor(
     val uiMode: StateFlow<UiModePreference> = prefs.uiMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiModePreference.AUTO)
 
+    val homeLayout: StateFlow<HomeLayout> = prefs.homeLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
+
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
 
@@ -119,6 +123,11 @@ class SettingsViewModel @Inject constructor(
     /** Persists the interface mode override (auto, touch or TV). */
     fun setUiMode(mode: UiModePreference) {
         viewModelScope.launch { prefs.setUiMode(mode) }
+    }
+
+    /** Persists the Home hub arrangement; Home restyles live. */
+    fun setHomeLayout(layout: HomeLayout) {
+        viewModelScope.launch { prefs.setHomeLayout(layout) }
     }
 
     /** Persists the subtitle text size; the preview and VOD playback pick it up immediately. */

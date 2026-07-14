@@ -9,17 +9,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Lock
@@ -37,6 +42,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -50,6 +57,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.R
+import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.ManagedAccessState
 import com.novaplay.tv.data.repo.ManagedFeature
@@ -94,6 +102,7 @@ fun HomeScreen(
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
+    val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
     val firstCardFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
     val layoutInfo = appLayoutInfo()
@@ -180,45 +189,35 @@ fun HomeScreen(
             ManagedAccessNotice(managedAccess)
         }
 
-        val minimumCardWidth = when (layoutInfo.widthClass) {
-            WindowWidthClass.COMPACT -> 132.dp
-            WindowWidthClass.MEDIUM -> 148.dp
-            WindowWidthClass.EXPANDED -> 164.dp
-        }
-        val focusSafetyInset = if (isTv) 18.dp else 0.dp
-        val gridSpacing = if (isTv) 0.dp else 16.dp
-        val compactTv = isTv && layoutInfo.widthClass == WindowWidthClass.COMPACT
-        val verticalArrangement = if (compactTv) {
-            Arrangement.spacedBy(gridSpacing, Alignment.CenterVertically)
-        } else {
-            Arrangement.spacedBy(gridSpacing)
-        }
-
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = minimumCardWidth),
-            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-            verticalArrangement = verticalArrangement,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(vertical = if (isTv) 0.dp else 20.dp),
-        ) {
-            items(cards, key = { it.labelRes }) { card ->
-                HomeCardItem(
-                    card = card,
-                    modifier = Modifier
-                        .padding(focusSafetyInset)
-                        .fillMaxWidth()
-                        .aspectRatio(0.94f)
-                        .then(
-                            if (card.labelRes == firstCardLabelRes) {
-                                Modifier.focusRequester(firstCardFocus)
-                            } else {
-                                Modifier
-                            },
-                        ),
-                )
-            }
+        // Cards render in the user-selected arrangement; every variant keeps the
+        // same managed filtering, focus-safety insets and initial TV focus.
+        val hubModifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()
+        when (homeLayout) {
+            HomeLayout.CLASSIC -> ClassicHub(
+                cards = cards,
+                layoutInfo = layoutInfo,
+                isTv = isTv,
+                firstCardLabelRes = firstCardLabelRes,
+                firstCardFocus = firstCardFocus,
+                modifier = hubModifier,
+            )
+            HomeLayout.HERO -> HeroHub(
+                cards = cards,
+                layoutInfo = layoutInfo,
+                isTv = isTv,
+                firstCardLabelRes = firstCardLabelRes,
+                firstCardFocus = firstCardFocus,
+                modifier = hubModifier,
+            )
+            HomeLayout.ROWS -> RowsHub(
+                cards = cards,
+                isTv = isTv,
+                firstCardLabelRes = firstCardLabelRes,
+                firstCardFocus = firstCardFocus,
+                modifier = hubModifier,
+            )
         }
 
         Row(
@@ -241,6 +240,264 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
                 SyncStatus.Idle -> Unit
+            }
+        }
+    }
+}
+
+// The original adaptive grid of equal cards.
+@Composable
+private fun ClassicHub(
+    cards: List<HomeCard>,
+    layoutInfo: com.novaplay.tv.ui.theme.AppLayoutInfo,
+    isTv: Boolean,
+    firstCardLabelRes: Int?,
+    firstCardFocus: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    val minimumCardWidth = when (layoutInfo.widthClass) {
+        WindowWidthClass.COMPACT -> 132.dp
+        WindowWidthClass.MEDIUM -> 148.dp
+        WindowWidthClass.EXPANDED -> 164.dp
+    }
+    val focusSafetyInset = if (isTv) 18.dp else 0.dp
+    val gridSpacing = if (isTv) 0.dp else 16.dp
+    val compactTv = isTv && layoutInfo.widthClass == WindowWidthClass.COMPACT
+    val verticalArrangement = if (compactTv) {
+        Arrangement.spacedBy(gridSpacing, Alignment.CenterVertically)
+    } else {
+        Arrangement.spacedBy(gridSpacing)
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = minimumCardWidth),
+        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+        verticalArrangement = verticalArrangement,
+        modifier = modifier.padding(vertical = if (isTv) 0.dp else 20.dp),
+    ) {
+        items(cards, key = { it.labelRes }) { card ->
+            HomeCardItem(
+                card = card,
+                modifier = Modifier
+                    .padding(focusSafetyInset)
+                    .fillMaxWidth()
+                    .aspectRatio(0.94f)
+                    .then(
+                        if (card.labelRes == firstCardLabelRes) {
+                            Modifier.focusRequester(firstCardFocus)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            )
+        }
+    }
+}
+
+// The familiar IPTV arrangement: one dominant panel (Live TV when available)
+// with the remaining sections in a small grid beside or below it.
+@Composable
+private fun HeroHub(
+    cards: List<HomeCard>,
+    layoutInfo: com.novaplay.tv.ui.theme.AppLayoutInfo,
+    isTv: Boolean,
+    firstCardLabelRes: Int?,
+    firstCardFocus: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    val hero = cards.firstOrNull() ?: return
+    val rest = cards.drop(1)
+    val inset = if (isTv) 18.dp else 0.dp
+    val heroFocus = if (hero.labelRes == firstCardLabelRes) {
+        Modifier.focusRequester(firstCardFocus)
+    } else {
+        Modifier
+    }
+
+    if (layoutInfo.widthClass == WindowWidthClass.COMPACT) {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+            modifier = modifier
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 16.dp),
+        ) {
+            HeroCard(
+                card = hero,
+                modifier = Modifier
+                    .padding(inset)
+                    .fillMaxWidth()
+                    .height(176.dp)
+                    .then(heroFocus),
+            )
+            rest.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    pair.forEach { card ->
+                        HomeCardItem(
+                            card = card,
+                            modifier = Modifier
+                                .padding(inset)
+                                .weight(1f)
+                                .aspectRatio(1.5f),
+                        )
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        }
+    } else {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            modifier = modifier.padding(vertical = if (isTv) 12.dp else 20.dp),
+        ) {
+            HeroCard(
+                card = hero,
+                modifier = Modifier
+                    .padding(inset)
+                    .weight(1.15f)
+                    .fillMaxHeight()
+                    .then(heroFocus),
+            )
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(if (isTv) 0.dp else 14.dp),
+                verticalArrangement = Arrangement.spacedBy(if (isTv) 0.dp else 14.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                items(rest, key = { it.labelRes }) { card ->
+                    HomeCardItem(
+                        card = card,
+                        modifier = Modifier
+                            .padding(inset)
+                            .fillMaxWidth()
+                            .aspectRatio(1.15f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+// The dominant panel of the hero arrangement: accent-washed, oversized icon
+// and headline label anchored to the bottom edge.
+@Composable
+private fun HeroCard(
+    card: HomeCard,
+    modifier: Modifier = Modifier,
+) {
+    val label = stringResource(card.labelRes)
+    NovaClickable(
+        onClick = card.onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        focusedScale = 1.03f,
+        accessibilityLabel = label,
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(NovaGlassHighlight)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(NovaAccent.copy(alpha = 0.20f), Color.Transparent),
+                        radius = 900f,
+                    ),
+                ),
+        )
+        Column(modifier = Modifier.align(Alignment.BottomStart).padding(26.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .border(1.5.dp, NovaAccentGradient, CircleShape)
+                    .background(NovaAccent.copy(alpha = 0.10f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = card.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
+// Full-width banner list: the first section (Live TV) is the tallest, the rest
+// stack beneath — the leanest arrangement for remotes and small windows.
+@Composable
+private fun RowsHub(
+    cards: List<HomeCard>,
+    isTv: Boolean,
+    firstCardLabelRes: Int?,
+    firstCardFocus: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    val inset = if (isTv) 14.dp else 0.dp
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(if (isTv) 0.dp else 12.dp),
+        modifier = modifier.padding(vertical = if (isTv) 8.dp else 20.dp),
+    ) {
+        itemsIndexed(cards, key = { _, card -> card.labelRes }) { index, card ->
+            val label = stringResource(card.labelRes)
+            NovaClickable(
+                onClick = card.onClick,
+                modifier = Modifier
+                    .padding(inset)
+                    .fillMaxWidth()
+                    .height(if (index == 0) 128.dp else 84.dp)
+                    .then(
+                        if (card.labelRes == firstCardLabelRes) {
+                            Modifier.focusRequester(firstCardFocus)
+                        } else {
+                            Modifier
+                        },
+                    ),
+                shape = RoundedCornerShape(18.dp),
+                focusedScale = 1.02f,
+                accessibilityLabel = label,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .background(NovaGlassHighlight),
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(horizontal = 22.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(if (index == 0) 58.dp else 44.dp)
+                            .border(1.5.dp, NovaAccentGradient, CircleShape)
+                            .background(NovaAccent.copy(alpha = 0.08f), CircleShape),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = card.icon,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(if (index == 0) 28.dp else 22.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(18.dp))
+                    Text(
+                        text = label,
+                        style = if (index == 0) {
+                            MaterialTheme.typography.headlineSmall
+                        } else {
+                            MaterialTheme.typography.titleMedium
+                        },
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
             }
         }
     }

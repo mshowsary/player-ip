@@ -29,6 +29,16 @@ enum class LiveFormat(val label: String) {
     TS("MPEG-TS"),
 }
 
+/**
+ * Home hub arrangement. Switchable live from Settings so both testers can
+ * compare on real devices; the winner can later become a brand-pack default.
+ */
+enum class HomeLayout(val label: String) {
+    CLASSIC("Classic grid"),
+    HERO("Hero"),
+    ROWS("Rows"),
+}
+
 /** How live video fills the screen; cycled from the player and persisted. */
 enum class VideoScale {
     FIT,
@@ -130,6 +140,7 @@ class AppPreferences @Inject constructor(
         val DEVICE_MAC = stringPreferencesKey("device_mac")
         val DEVICE_KEY = stringPreferencesKey("device_key")
         val UI_MODE = stringPreferencesKey("ui_mode")
+        val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
         val VIDEO_SCALE = stringPreferencesKey("video_scale")
         val PLAYER_GESTURES = booleanPreferencesKey("player_gestures_enabled")
@@ -191,6 +202,15 @@ class AppPreferences @Inject constructor(
     /** Stores the navigation-style override; takes effect live via [uiMode] collectors. */
     suspend fun setUiMode(mode: UiModePreference) {
         context.dataStore.edit { it[Keys.UI_MODE] = mode.name }
+    }
+
+    val homeLayout: Flow<HomeLayout> = context.dataStore.data
+        .map { it[Keys.HOME_LAYOUT].toEnum(HomeLayout.CLASSIC) }
+        .distinctUntilChanged()
+
+    /** Stores the Home hub arrangement; the hub restyles live via [homeLayout] collectors. */
+    suspend fun setHomeLayout(layout: HomeLayout) {
+        context.dataStore.edit { it[Keys.HOME_LAYOUT] = layout.name }
     }
 
     val liveFormat: Flow<LiveFormat> = context.dataStore.data
