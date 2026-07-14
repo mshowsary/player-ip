@@ -1,4 +1,5 @@
 import java.net.URI
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -24,9 +25,58 @@ fun isReservedPortalHost(rawHost: String): Boolean {
         host == "example" || host.endsWith(".example")
 }
 
+// ---- White-label brand pack (brands/<slug>/) ----
+// The brand supplies identity (name, package id), accents, feature toggles and
+// an optional preset portal. Everything validates at configuration time so a
+// half-branded APK can never be produced.
+val brandSlug = providers.gradleProperty("novaplayBrand")
+    .orElse(providers.environmentVariable("NOVAPLAY_BRAND"))
+    .orElse("novaplay")
+    .get()
+    .trim()
+    .lowercase()
+require(Regex("""^[a-z][a-z0-9]{1,23}$""").matches(brandSlug)) {
+    "Brand slug '$brandSlug' must be 2-24 lowercase letters/digits starting with a letter"
+}
+val brandDir = rootProject.file("brands/$brandSlug")
+require(File(brandDir, "brand.properties").isFile) {
+    "Unknown brand '$brandSlug' — expected brands/$brandSlug/brand.properties (see brands/README.md)"
+}
+require(File(brandDir, "res").isDirectory) {
+    "Brand '$brandSlug' is missing its res/ overlay (launcher icons and TV banner)"
+}
+val brandProperties = Properties().apply {
+    File(brandDir, "brand.properties").inputStream().use(::load)
+}
+
+fun brandValue(key: String): String? =
+    brandProperties.getProperty(key)?.trim()?.takeIf { it.isNotEmpty() }
+
+val brandAppName = brandValue("brand.appName")
+    ?: error("Brand '$brandSlug' must define brand.appName")
+val brandApplicationId = brandValue("brand.applicationId")
+    ?: error("Brand '$brandSlug' must define brand.applicationId")
+require(Regex("""^[a-zA-Z][a-zA-Z0-9_]*(\.[a-zA-Z][a-zA-Z0-9_]*)+$""").matches(brandApplicationId)) {
+    "Brand '$brandSlug' application id '$brandApplicationId' is not a valid Android package name"
+}
+val brandAccent = brandValue("brand.accentColor") ?: "#22D3EE"
+val brandAccentAlt = brandValue("brand.accentColorAlt") ?: "#8B5CF6"
+for ((key, value) in listOf("brand.accentColor" to brandAccent, "brand.accentColorAlt" to brandAccentAlt)) {
+    require(Regex("""^#[0-9a-fA-F]{6}$""").matches(value)) {
+        "Brand '$brandSlug' $key '$value' must be #RRGGBB"
+    }
+}
+val brandAllowPersonalText = brandValue("brand.allowPersonalPlaylists") ?: "true"
+require(brandAllowPersonalText in setOf("true", "false")) {
+    "Brand '$brandSlug' brand.allowPersonalPlaylists must be true or false"
+}
+val brandAllowPersonal = brandAllowPersonalText.toBoolean()
+val brandPortalBaseUrl = brandValue("brand.portalBaseUrl")
+
+// Portal resolution order: environment > gradle property > brand pack > placeholder.
 val configuredPortalBaseUrl = providers.gradleProperty("novaplayPortalBaseUrl")
     .orElse(providers.environmentVariable("NOVAPLAY_PORTAL_BASE_URL"))
-    .orElse("https://portal.example.com")
+    .orElse(brandPortalBaseUrl ?: "https://portal.example.com")
     .get()
 val configuredPortalUri = runCatching { URI(configuredPortalBaseUrl.trim()) }.getOrNull()
 val configuredPortalHost = configuredPortalUri?.host?.lowercase().orEmpty()
@@ -105,14 +155,28 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.novaplay.tv"
+        // The namespace (code/R package) is fixed; only the installed identity
+        // follows the brand.
+        applicationId = brandApplicationId
         minSdk = 23
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
 
+        resValue("string", "app_name", brandAppName.replace("\"", ""))
+        buildConfigField("String", "BRAND_SLUG", brandSlug.asBuildConfigString())
+        buildConfigField("String", "BRAND_ACCENT", brandAccent.asBuildConfigString())
+        buildConfigField("String", "BRAND_ACCENT_ALT", brandAccentAlt.asBuildConfigString())
+        buildConfigField("boolean", "ALLOW_PERSONAL_PLAYLISTS", brandAllowPersonal.toString())
         buildConfigField("String", "PORTAL_BASE_URL", configuredPortalBaseUrl.asBuildConfigString())
         buildConfigField("boolean", "PORTAL_CONFIGURED", portalConfigured.toString())
+    }
+
+    sourceSets {
+        // Launcher icons and the TV banner come from the selected brand pack.
+        getByName("main") {
+            res.srcDir(brandDir.resolve("res"))
+        }
     }
 
     signingConfigs {
@@ -173,7 +237,7 @@ val releaseMetadataFile = layout.buildDirectory.file("release-candidate/release-
 tasks.register("writeReleaseMetadata") {
     group = "build"
     description = "Writes privacy-safe metadata for release-candidate packaging."
-    inputs.property("applicationId", "com.novaplay.tv")
+    inputs.property("applicationId", brandApplicationId)
     inputs.property("versionCode", appVersionCode)
     inputs.property("versionName", appVersionName)
     inputs.property("portalConfigured", releasePortalConfigured)
@@ -185,7 +249,7 @@ tasks.register("writeReleaseMetadata") {
         output.parentFile.mkdirs()
         output.writeText(
             buildString {
-                appendLine("applicationId=com.novaplay.tv")
+                appendLine("applicationId=$brandApplicationId")
                 appendLine("versionCode=$appVersionCode")
                 appendLine("versionName=$appVersionName")
                 appendLine("buildChannel=production")
