@@ -192,7 +192,18 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("boolean", "MOCK_ACTIVATION", "true")
+            // Mock activation stays the debug default so the app remains
+            // testable with zero infrastructure. Building against a real
+            // development portal: -PnovaplayMockActivation=false (or the
+            // NOVAPLAY_MOCK_ACTIVATION env var) together with
+            // -PnovaplayPortalBaseUrl=http://127.0.0.1:8000. Release builds
+            // ignore this switch entirely.
+            val debugMockActivation = providers.gradleProperty("novaplayMockActivation")
+                .orElse(providers.environmentVariable("NOVAPLAY_MOCK_ACTIVATION"))
+                .getOrElse("true")
+                .trim()
+                .lowercase() != "false"
+            buildConfigField("boolean", "MOCK_ACTIVATION", debugMockActivation.toString())
             buildConfigField("String", "BUILD_CHANNEL", "\"debug\"")
         }
         release {
