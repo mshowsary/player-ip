@@ -54,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.data.prefs.AccentTheme
 import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
@@ -83,6 +84,7 @@ fun PolishedSettingsScreen(
 ) {
     val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
     val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
+    val accentTheme by viewModel.accentTheme.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val liveFormat by viewModel.liveFormat.collectAsStateWithLifecycle()
     val playerGestures by viewModel.playerGesturesEnabled.collectAsStateWithLifecycle()
@@ -118,7 +120,7 @@ fun PolishedSettingsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                item { InterfacePanel(uiMode, homeLayout, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout) }
+                item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
                 item {
                     ManagedAccessPanel(
                         policy = managedAccess,
@@ -164,7 +166,7 @@ fun PolishedSettingsScreen(
                         .weight(1f)
                         .fillMaxHeight(),
                 ) {
-                    item { InterfacePanel(uiMode, homeLayout, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout) }
+                    item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
                     item {
                         ManagedAccessPanel(
                             policy = managedAccess,
@@ -226,9 +228,11 @@ fun PolishedSettingsScreen(
 private fun InterfacePanel(
     mode: UiModePreference,
     homeLayout: HomeLayout,
+    accentTheme: AccentTheme,
     firstFocus: FocusRequester,
     onSelect: (UiModePreference) -> Unit,
     onSelectHomeLayout: (HomeLayout) -> Unit,
+    onSelectAccentTheme: (AccentTheme) -> Unit,
 ) {
     SettingsPanel(
         title = "Interface",
@@ -264,6 +268,13 @@ private fun InterfacePanel(
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
+        )
+        // Whole-app accent pair on top of the brand defaults.
+        ChoiceGroup(
+            label = "Accent color",
+            options = AccentTheme.entries.map { it.label },
+            selectedIndex = accentTheme.ordinal,
+            onSelect = { onSelectAccentTheme(AccentTheme.entries[it]) },
         )
     }
 }

@@ -9,6 +9,7 @@ import coil.imageLoader
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.background.BackgroundSyncScheduler
 import com.novaplay.tv.core.DeviceIdentity
+import com.novaplay.tv.data.prefs.AccentTheme
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.BackgroundSyncMode
 import com.novaplay.tv.data.prefs.HomeLayout
@@ -79,6 +80,9 @@ class SettingsViewModel @Inject constructor(
     val homeLayout: StateFlow<HomeLayout> = prefs.homeLayout
         .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
 
+    val accentTheme: StateFlow<AccentTheme> = prefs.accentTheme
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AccentTheme.BRAND)
+
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
 
@@ -128,6 +132,11 @@ class SettingsViewModel @Inject constructor(
     /** Persists the Home hub arrangement; Home restyles live. */
     fun setHomeLayout(layout: HomeLayout) {
         viewModelScope.launch { prefs.setHomeLayout(layout) }
+    }
+
+    /** Persists the accent choice; the entire app restyles live. */
+    fun setAccentTheme(theme: AccentTheme) {
+        viewModelScope.launch { prefs.setAccentTheme(theme) }
     }
 
     /** Persists the subtitle text size; the preview and VOD playback pick it up immediately. */

@@ -7,6 +7,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.novaplay.tv.data.prefs.AccentTheme
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.UiModePreference
 import com.novaplay.tv.ui.navigation.NovaNavGraph
@@ -37,9 +38,12 @@ class MainActivity : ComponentActivity() {
             val uiMode = appPreferences.uiMode.collectAsStateWithLifecycle(
                 initialValue = UiModePreference.AUTO,
             ).value
+            val accentTheme = appPreferences.accentTheme.collectAsStateWithLifecycle(
+                initialValue = AccentTheme.BRAND,
+            ).value
 
             ProvideAdaptiveEnvironment(preference = uiMode) {
-                NovaPlayTheme {
+                NovaPlayTheme(accentTheme = accentTheme) {
                     NovaNavGraph(onImmersiveChanged = ::updateImmersiveMode)
                 }
             }

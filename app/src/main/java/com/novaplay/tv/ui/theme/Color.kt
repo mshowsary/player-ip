@@ -12,11 +12,14 @@ val NovaSurfaceBright = Color(0xFF1B2540)
 val NovaOnSurface = Color(0xFFE9EFFB)
 val NovaOnSurfaceMuted = Color(0xFF8C99B5)
 
-// Parses a brand pack's #RRGGBB; the build validates the format, the fallback
-// only guards against a corrupted BuildConfig ever producing an unthemed UI.
-private fun brandColor(hex: String, fallback: Long): Color = runCatching {
+// Parses a #RRGGBB from a brand pack or accent preset; validated upstream, the
+// fallback only guards against a corrupted value ever producing an unthemed UI.
+internal fun parseAccentHex(hex: String, fallback: Color): Color = runCatching {
     Color(0xFF000000 or hex.removePrefix("#").toLong(16))
-}.getOrElse { Color(fallback) }
+}.getOrElse { fallback }
+
+private fun brandColor(hex: String, fallback: Long): Color =
+    parseAccentHex(hex, Color(fallback))
 
 // Dual accent, supplied by the white-label brand pack. Default brand: electric
 // cyan for focus/interaction, violet as its gradient partner — the signature sweep.

@@ -96,7 +96,7 @@ import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.player.BufferingIndicator
 import com.novaplay.tv.ui.player.PlayerSurface
-import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.LocalNovaAccents
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import kotlinx.coroutines.delay
@@ -385,7 +385,7 @@ fun LivePlayerScreen(
             Text(
                 text = digitBuffer,
                 style = TextStyle(
-                    brush = NovaAccentGradient,
+                    brush = LocalNovaAccents.current.gradient,
                     fontSize = 40.sp,
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
@@ -497,7 +497,7 @@ private fun ChannelInfoBar(
             Text(
                 text = number?.toString().orEmpty(),
                 style = TextStyle(
-                    brush = NovaAccentGradient,
+                    brush = LocalNovaAccents.current.gradient,
                     fontSize = 34.sp,
                     lineHeight = 42.sp,
                     fontWeight = FontWeight.Bold,

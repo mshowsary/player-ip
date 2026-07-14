@@ -42,3 +42,20 @@ CI passed:         <same SHA>
 ## Recovery / rollback
 
 Preference-only feature (default Classic); no schema changes.
+
+## Polish revision (owner feedback on the first hero)
+
+- **Labels can no longer vanish**: section cards use fixed heights with a
+  row layout (icon + label) instead of aspect-ratio boxes — verify Movies /
+  Series / Playlists / Settings all show their names in TV mode, portrait
+  and landscape.
+- **Hero card rebalanced**: headline + accent underline on the left, large
+  watermark icon on the right, diagonal accent wash — no more mostly-empty box.
+- **Content rails**: below the sections, "Continue watching" (recently
+  played channels) and "Bookmarks" rails appear once they have content;
+  tapping/OK on a rail tile tunes that channel directly. Fresh installs
+  simply show no rails.
+- **Accent themes**: Settings → Interface → Accent color offers Brand /
+  Ocean / Sunset / Royal / Emerald; the entire app (focus rings, gradients,
+  wordmark, backdrop blooms, buttons) restyles instantly and the choice
+  persists. Brand returns to the white-label pack's colors.
