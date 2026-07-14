@@ -314,7 +314,10 @@ private fun HeroHub(
     val hero = cards.firstOrNull() ?: return
     val rest = cards.drop(1)
     val inset = if (isTv) 10.dp else 0.dp
-    val compactWidth = layoutInfo.widthClass == WindowWidthClass.COMPACT
+    // Side-by-side needs real width for the card labels: only expanded
+    // windows (TVs, large tablets) qualify — landscape phones stack, otherwise
+    // the right-hand pair column truncates names to their first letters.
+    val stacked = layoutInfo.widthClass != WindowWidthClass.EXPANDED
     val heroFocus = if (hero.labelRes == firstCardLabelRes) {
         Modifier.focusRequester(firstCardFocus)
     } else {
@@ -327,7 +330,7 @@ private fun HeroHub(
             .verticalScroll(rememberScrollState())
             .padding(vertical = 14.dp),
     ) {
-        if (compactWidth) {
+        if (stacked) {
             HeroCard(
                 card = hero,
                 modifier = Modifier
