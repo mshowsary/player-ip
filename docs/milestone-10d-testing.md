@@ -1,13 +1,11 @@
 # Milestone 10D — Home hub layout variants test plan
 
-Three switchable Home arrangements so both testers can compare on real devices
+Two switchable Home arrangements so both testers can compare on real devices
 and pick the product default (which can later become a brand-pack option):
 
 - **Classic grid** — the current adaptive grid of equal cards (unchanged).
 - **Hero** — a dominant Live TV panel with the other sections in a small grid
   beside it (below it on narrow phones): the familiar IPTV look.
-- **Rows** — full-width banners, Live TV tallest first: the leanest layout for
-  remotes and small windows.
 
 Switch live under **Settings → Interface → Home layout**; the hub restyles
 immediately, and the choice persists across restarts.

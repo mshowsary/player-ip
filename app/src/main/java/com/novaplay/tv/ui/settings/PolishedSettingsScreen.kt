@@ -261,7 +261,6 @@ private fun InterfacePanel(
             text = when (homeLayout) {
                 HomeLayout.CLASSIC -> "Equal cards in an adaptive grid"
                 HomeLayout.HERO -> "A dominant Live TV panel with sections beside it"
-                HomeLayout.ROWS -> "Full-width rows, leanest for remotes"
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,

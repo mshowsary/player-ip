@@ -16,11 +16,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -206,13 +204,6 @@ fun HomeScreen(
             HomeLayout.HERO -> HeroHub(
                 cards = cards,
                 layoutInfo = layoutInfo,
-                isTv = isTv,
-                firstCardLabelRes = firstCardLabelRes,
-                firstCardFocus = firstCardFocus,
-                modifier = hubModifier,
-            )
-            HomeLayout.ROWS -> RowsHub(
-                cards = cards,
                 isTv = isTv,
                 firstCardLabelRes = firstCardLabelRes,
                 firstCardFocus = firstCardFocus,
@@ -424,81 +415,6 @@ private fun HeroCard(
                 style = MaterialTheme.typography.headlineMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-        }
-    }
-}
-
-// Full-width banner list: the first section (Live TV) is the tallest, the rest
-// stack beneath — the leanest arrangement for remotes and small windows.
-@Composable
-private fun RowsHub(
-    cards: List<HomeCard>,
-    isTv: Boolean,
-    firstCardLabelRes: Int?,
-    firstCardFocus: FocusRequester,
-    modifier: Modifier = Modifier,
-) {
-    val inset = if (isTv) 14.dp else 0.dp
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(if (isTv) 0.dp else 12.dp),
-        modifier = modifier.padding(vertical = if (isTv) 8.dp else 20.dp),
-    ) {
-        itemsIndexed(cards, key = { _, card -> card.labelRes }) { index, card ->
-            val label = stringResource(card.labelRes)
-            NovaClickable(
-                onClick = card.onClick,
-                modifier = Modifier
-                    .padding(inset)
-                    .fillMaxWidth()
-                    .height(if (index == 0) 128.dp else 84.dp)
-                    .then(
-                        if (card.labelRes == firstCardLabelRes) {
-                            Modifier.focusRequester(firstCardFocus)
-                        } else {
-                            Modifier
-                        },
-                    ),
-                shape = RoundedCornerShape(18.dp),
-                focusedScale = 1.02f,
-                accessibilityLabel = label,
-            ) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .background(NovaGlassHighlight),
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(horizontal = 22.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(if (index == 0) 58.dp else 44.dp)
-                            .border(1.5.dp, NovaAccentGradient, CircleShape)
-                            .background(NovaAccent.copy(alpha = 0.08f), CircleShape),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = card.icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(if (index == 0) 28.dp else 22.dp),
-                        )
-                    }
-                    Spacer(Modifier.width(18.dp))
-                    Text(
-                        text = label,
-                        style = if (index == 0) {
-                            MaterialTheme.typography.headlineSmall
-                        } else {
-                            MaterialTheme.typography.titleMedium
-                        },
-                        color = MaterialTheme.colorScheme.onSurface,
-                    )
-                }
-            }
         }
     }
 }

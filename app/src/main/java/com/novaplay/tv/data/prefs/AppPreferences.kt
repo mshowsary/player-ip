@@ -32,11 +32,12 @@ enum class LiveFormat(val label: String) {
 /**
  * Home hub arrangement. Switchable live from Settings so both testers can
  * compare on real devices; the winner can later become a brand-pack default.
+ * (A full-width Rows variant was built and rejected by owner testing — banner
+ * lists waste the width TV screens have most of.)
  */
 enum class HomeLayout(val label: String) {
     CLASSIC("Classic grid"),
     HERO("Hero"),
-    ROWS("Rows"),
 }
 
 /** How live video fills the screen; cycled from the player and persisted. */
