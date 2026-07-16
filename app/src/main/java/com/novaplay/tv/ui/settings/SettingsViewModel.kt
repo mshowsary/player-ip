@@ -27,7 +27,9 @@ import com.novaplay.tv.data.repo.AppDiagnostics
 import com.novaplay.tv.data.repo.AppDiagnosticsRepository
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.repo.DebugManagedPolicyPreset
+import com.novaplay.tv.data.repo.LicenseInfo
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.data.repo.PlayerLicenseRepository
 import com.novaplay.tv.ui.player.PlaybackMetrics
 import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
@@ -74,10 +76,14 @@ class SettingsViewModel @Inject constructor(
     private val backgroundSyncScheduler: BackgroundSyncScheduler,
     private val diagnosticsRepository: AppDiagnosticsRepository,
     private val updateRepository: UpdateRepository,
+    private val playerLicenseRepository: PlayerLicenseRepository,
     deviceIdentity: DeviceIdentity,
     playbackMetrics: PlaybackMetrics,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
+
+    /** Self-service player identity/trial state for the "This device" panel. */
+    val license: StateFlow<LicenseInfo?> = playerLicenseRepository.license
 
     private val _updateState = MutableStateFlow(
         if (updateRepository.enabled) UpdateCheckState.Idle else UpdateCheckState.Disabled,
@@ -149,6 +155,9 @@ class SettingsViewModel @Inject constructor(
             _deviceInfo.value = DeviceInfo(mac = identity.mac, deviceKey = identity.deviceKey)
         }
         refreshDiagnostics()
+        // Registers this installation on first run and refreshes the trial /
+        // license state; a no-op on managed-only or portal-less builds.
+        viewModelScope.launch { playerLicenseRepository.refresh() }
     }
 
     /** Persists the interface mode override (auto, touch or TV). */

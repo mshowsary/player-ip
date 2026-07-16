@@ -58,6 +58,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.prefs.AccentTheme
+import com.novaplay.tv.data.repo.LicenseInfo
 import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
@@ -94,6 +95,7 @@ fun PolishedSettingsScreen(
     val playerGestures by viewModel.playerGesturesEnabled.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val deviceInfo by viewModel.deviceInfo.collectAsStateWithLifecycle()
+    val license by viewModel.license.collectAsStateWithLifecycle()
     val cacheCleared by viewModel.cacheCleared.collectAsStateWithLifecycle()
     val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
     val managedRefreshMessage by viewModel.managedRefreshMessage.collectAsStateWithLifecycle()
@@ -171,6 +173,7 @@ fun PolishedSettingsScreen(
                     DevicePanel(
                         info = deviceInfo,
                         updateState = updateState,
+                        license = license,
                         onCheckUpdates = viewModel::checkForUpdates,
                         onOpenDownload = openDownload,
                     )
@@ -215,6 +218,7 @@ fun PolishedSettingsScreen(
                     DevicePanel(
                         info = deviceInfo,
                         updateState = updateState,
+                        license = license,
                         onCheckUpdates = viewModel::checkForUpdates,
                         onOpenDownload = openDownload,
                     )
@@ -526,6 +530,7 @@ private fun SubtitlePanel(
 private fun DevicePanel(
     info: DeviceInfo,
     updateState: UpdateCheckState,
+    license: LicenseInfo?,
     onCheckUpdates: () -> Unit,
     onOpenDownload: (String) -> Unit,
 ) {
@@ -533,6 +538,21 @@ private fun DevicePanel(
         title = "This device",
         description = "These identifiers are used for managed portal activation and support.",
     ) {
+        // Self-service player identity: what the viewer reads on a support
+        // call and types when buying the lifetime license.
+        license?.let {
+            DeviceInfoRow("Device code", it.deviceCode)
+            DeviceInfoRow(
+                "Player license",
+                when (it.status) {
+                    "trial" -> "Trial — ${it.trialDaysLeft} day(s) left"
+                    "trial_expired" -> "Trial ended — activate to continue"
+                    "licensed" -> "Lifetime license active"
+                    "revoked" -> "License moved to another device"
+                    else -> it.status
+                } + if (it.stale) " (offline)" else "",
+            )
+        }
         DeviceInfoRow("MAC address", info.mac)
         DeviceInfoRow("Device key", info.deviceKey)
         DeviceInfoRow("App version", info.appVersion)
