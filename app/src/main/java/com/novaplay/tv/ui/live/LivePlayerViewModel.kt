@@ -24,6 +24,7 @@ import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.prefs.VideoScale
 import com.novaplay.tv.ui.player.GestureHintSession
 import com.novaplay.tv.ui.player.PlaybackBufferPolicy
+import com.novaplay.tv.ui.player.PlaybackGatePolicy
 import com.novaplay.tv.ui.player.PlaybackMetrics
 import com.novaplay.tv.ui.player.PlaybackRetryDecision
 import com.novaplay.tv.ui.player.PlaybackRetryPolicy
@@ -84,6 +85,7 @@ class LivePlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
     savedStateHandle: SavedStateHandle,
     private val contentRepository: ContentRepository,
+    private val playerLicenseRepository: com.novaplay.tv.data.repo.PlayerLicenseRepository,
     private val prefs: AppPreferences,
     private val gestureHintSession: GestureHintSession,
     private val playbackMetrics: PlaybackMetrics,
@@ -499,6 +501,20 @@ class LivePlayerViewModel @Inject constructor(
     // the candidate URLs for the preferred container, and starts on the first
     // source with a fresh retry budget. Also pops the info overlay.
     private suspend fun playChannel(channel: LiveChannel) {
+        // Trial gate: self-service installs with an ended trial stop here,
+        // at the moment of highest intent. Managed playlists never gate.
+        val license = playerLicenseRepository.license.value
+        val gate = PlaybackGatePolicy.blockMessage(
+            isPersonalPlaylist = contentRepository.isPersonalPlaylist(channel.playlistId),
+            licenseStatus = license?.status,
+            stale = license?.stale ?: true,
+            deviceCode = license?.deviceCode,
+        )
+        if (gate != null) {
+            player.stop()
+            _uiState.update { it.copy(channel = channel, error = gate, buffering = false) }
+            return
+        }
         // Remember where we came from so recall ("0" / the swap button) works.
         _uiState.value.channel?.takeIf { it.id != channel.id }?.let { previousChannel = it }
         zapStartedAtMs = SystemClock.elapsedRealtime()
