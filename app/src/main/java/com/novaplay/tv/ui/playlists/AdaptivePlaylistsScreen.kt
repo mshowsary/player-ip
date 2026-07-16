@@ -99,6 +99,13 @@ fun AdaptivePlaylistsScreen(
     LaunchedEffect(isTv, playlists.isNotEmpty()) {
         if (isTv && playlists.isNotEmpty()) runCatching { firstRowFocus.requestFocus() }
     }
+    // First-run hand-off: "Add from your phone" on the setup screen opens the
+    // phone-entry panel immediately instead of landing on a menu.
+    LaunchedEffect(Unit) {
+        if (PhoneEntryLaunch.consume() && viewModel.phoneEntryAvailable) {
+            viewModel.startPhoneEntry()
+        }
+    }
 
     Column(
         modifier = Modifier
