@@ -34,6 +34,11 @@ class ContentRepository @Inject constructor(
 ) {
     val activePlaylist: Flow<Playlist?> = db.playlistDao().observeActive()
 
+    /** True when the playlist was user-entered (negative portalId); false for
+     * provider-managed assignments and unknown ids (never gate those). */
+    suspend fun isPersonalPlaylist(playlistId: Long): Boolean =
+        (db.playlistDao().getById(playlistId)?.portalId ?: 0L) < 0L
+
     /** One-shot lookup of the active playlist; null when none is selected. */
     suspend fun getActivePlaylist(): Playlist? = db.playlistDao().getActive()
 
