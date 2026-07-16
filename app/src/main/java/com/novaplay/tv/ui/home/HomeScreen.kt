@@ -9,17 +9,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.filled.Lock
@@ -35,13 +40,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -49,15 +58,17 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import coil.compose.AsyncImage
 import com.novaplay.tv.R
+import com.novaplay.tv.data.db.LiveChannel
+import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.ManagedAccessState
 import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.PulsingDot
-import com.novaplay.tv.ui.theme.NovaAccent
-import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.LocalNovaAccents
 import com.novaplay.tv.ui.theme.NovaGlassHighlight
 import com.novaplay.tv.ui.theme.WindowWidthClass
 import com.novaplay.tv.ui.theme.appLayoutInfo
@@ -89,11 +100,15 @@ fun HomeScreen(
     onOpenSeries: () -> Unit,
     onOpenPlaylists: () -> Unit,
     onOpenSettings: () -> Unit,
+    onPlayChannel: (Long) -> Unit = {},
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
+    val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
+    val recentChannels by viewModel.recentChannels.collectAsStateWithLifecycle()
+    val bookmarkedChannels by viewModel.bookmarkedChannels.collectAsStateWithLifecycle()
     val firstCardFocus = remember { FocusRequester() }
     val isTv = isTvDevice()
     val layoutInfo = appLayoutInfo()
@@ -180,45 +195,31 @@ fun HomeScreen(
             ManagedAccessNotice(managedAccess)
         }
 
-        val minimumCardWidth = when (layoutInfo.widthClass) {
-            WindowWidthClass.COMPACT -> 132.dp
-            WindowWidthClass.MEDIUM -> 148.dp
-            WindowWidthClass.EXPANDED -> 164.dp
-        }
-        val focusSafetyInset = if (isTv) 18.dp else 0.dp
-        val gridSpacing = if (isTv) 0.dp else 16.dp
-        val compactTv = isTv && layoutInfo.widthClass == WindowWidthClass.COMPACT
-        val verticalArrangement = if (compactTv) {
-            Arrangement.spacedBy(gridSpacing, Alignment.CenterVertically)
-        } else {
-            Arrangement.spacedBy(gridSpacing)
-        }
-
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = minimumCardWidth),
-            horizontalArrangement = Arrangement.spacedBy(gridSpacing),
-            verticalArrangement = verticalArrangement,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(vertical = if (isTv) 0.dp else 20.dp),
-        ) {
-            items(cards, key = { it.labelRes }) { card ->
-                HomeCardItem(
-                    card = card,
-                    modifier = Modifier
-                        .padding(focusSafetyInset)
-                        .fillMaxWidth()
-                        .aspectRatio(0.94f)
-                        .then(
-                            if (card.labelRes == firstCardLabelRes) {
-                                Modifier.focusRequester(firstCardFocus)
-                            } else {
-                                Modifier
-                            },
-                        ),
-                )
-            }
+        // Cards render in the user-selected arrangement; every variant keeps the
+        // same managed filtering, focus-safety insets and initial TV focus.
+        val hubModifier = Modifier
+            .weight(1f)
+            .fillMaxWidth()
+        when (homeLayout) {
+            HomeLayout.CLASSIC -> ClassicHub(
+                cards = cards,
+                layoutInfo = layoutInfo,
+                isTv = isTv,
+                firstCardLabelRes = firstCardLabelRes,
+                firstCardFocus = firstCardFocus,
+                modifier = hubModifier,
+            )
+            HomeLayout.HERO -> HeroHub(
+                cards = cards,
+                layoutInfo = layoutInfo,
+                isTv = isTv,
+                firstCardLabelRes = firstCardLabelRes,
+                firstCardFocus = firstCardFocus,
+                recentChannels = recentChannels,
+                bookmarkedChannels = bookmarkedChannels,
+                onPlayChannel = onPlayChannel,
+                modifier = hubModifier,
+            )
         }
 
         Row(
@@ -241,6 +242,335 @@ fun HomeScreen(
                     color = MaterialTheme.colorScheme.error,
                 )
                 SyncStatus.Idle -> Unit
+            }
+        }
+    }
+}
+
+// The original adaptive grid of equal cards.
+@Composable
+private fun ClassicHub(
+    cards: List<HomeCard>,
+    layoutInfo: com.novaplay.tv.ui.theme.AppLayoutInfo,
+    isTv: Boolean,
+    firstCardLabelRes: Int?,
+    firstCardFocus: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    val minimumCardWidth = when (layoutInfo.widthClass) {
+        WindowWidthClass.COMPACT -> 132.dp
+        WindowWidthClass.MEDIUM -> 148.dp
+        WindowWidthClass.EXPANDED -> 164.dp
+    }
+    val focusSafetyInset = if (isTv) 18.dp else 0.dp
+    val gridSpacing = if (isTv) 0.dp else 16.dp
+    val compactTv = isTv && layoutInfo.widthClass == WindowWidthClass.COMPACT
+    val verticalArrangement = if (compactTv) {
+        Arrangement.spacedBy(gridSpacing, Alignment.CenterVertically)
+    } else {
+        Arrangement.spacedBy(gridSpacing)
+    }
+
+    LazyVerticalGrid(
+        columns = GridCells.Adaptive(minSize = minimumCardWidth),
+        horizontalArrangement = Arrangement.spacedBy(gridSpacing),
+        verticalArrangement = verticalArrangement,
+        modifier = modifier.padding(vertical = if (isTv) 0.dp else 20.dp),
+    ) {
+        items(cards, key = { it.labelRes }) { card ->
+            HomeCardItem(
+                card = card,
+                modifier = Modifier
+                    .padding(focusSafetyInset)
+                    .fillMaxWidth()
+                    .aspectRatio(0.94f)
+                    .then(
+                        if (card.labelRes == firstCardLabelRes) {
+                            Modifier.focusRequester(firstCardFocus)
+                        } else {
+                            Modifier
+                        },
+                    ),
+            )
+        }
+    }
+}
+
+// The familiar IPTV arrangement: one dominant panel (Live TV when available),
+// the remaining sections as compact cards, and real content underneath —
+// recently watched and bookmarked channel rails that tune with one press.
+@Composable
+private fun HeroHub(
+    cards: List<HomeCard>,
+    layoutInfo: com.novaplay.tv.ui.theme.AppLayoutInfo,
+    isTv: Boolean,
+    firstCardLabelRes: Int?,
+    firstCardFocus: FocusRequester,
+    recentChannels: List<LiveChannel>,
+    bookmarkedChannels: List<LiveChannel>,
+    onPlayChannel: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hero = cards.firstOrNull() ?: return
+    val rest = cards.drop(1)
+    val inset = if (isTv) 10.dp else 0.dp
+    // Side-by-side needs real width for the card labels: only expanded
+    // windows (TVs, large tablets) qualify — landscape phones stack, otherwise
+    // the right-hand pair column truncates names to their first letters.
+    val stacked = layoutInfo.widthClass != WindowWidthClass.EXPANDED
+    val heroFocus = if (hero.labelRes == firstCardLabelRes) {
+        Modifier.focusRequester(firstCardFocus)
+    } else {
+        Modifier
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(vertical = 14.dp),
+    ) {
+        if (stacked) {
+            HeroCard(
+                card = hero,
+                modifier = Modifier
+                    .padding(inset)
+                    .fillMaxWidth()
+                    .height(150.dp)
+                    .then(heroFocus),
+            )
+            rest.chunked(2).forEach { pair ->
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    pair.forEach { card ->
+                        SectionCardCompact(
+                            card = card,
+                            modifier = Modifier
+                                .padding(inset)
+                                .weight(1f),
+                        )
+                    }
+                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                }
+            }
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                HeroCard(
+                    card = hero,
+                    modifier = Modifier
+                        .padding(inset)
+                        .weight(1.25f)
+                        .height(
+                            // Matches the two stacked compact cards beside it.
+                            (2 * 84 + 12).dp + inset * 2,
+                        )
+                        .then(heroFocus),
+                )
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    rest.chunked(2).forEach { pair ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            pair.forEach { card ->
+                                SectionCardCompact(
+                                    card = card,
+                                    modifier = Modifier
+                                        .padding(inset)
+                                        .weight(1f),
+                                )
+                            }
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Real content under the sections — this is what keeps the hub from
+        // looking empty, exactly like the established players.
+        ChannelRail(
+            title = "Continue watching",
+            channels = recentChannels,
+            inset = inset,
+            onPlayChannel = onPlayChannel,
+        )
+        ChannelRail(
+            title = "Bookmarks",
+            channels = bookmarkedChannels,
+            inset = inset,
+            onPlayChannel = onPlayChannel,
+        )
+    }
+}
+
+// Compact section entry with a fixed height, so the label can never be
+// squeezed out by focus insets or aspect-ratio math on any screen.
+@Composable
+private fun SectionCardCompact(
+    card: HomeCard,
+    modifier: Modifier = Modifier,
+) {
+    val label = stringResource(card.labelRes)
+    NovaClickable(
+        onClick = card.onClick,
+        modifier = modifier.height(84.dp),
+        shape = RoundedCornerShape(18.dp),
+        focusedScale = 1.04f,
+        accessibilityLabel = label,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(horizontal = 16.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .border(1.5.dp, LocalNovaAccents.current.gradient, CircleShape)
+                    .background(LocalNovaAccents.current.accent.copy(alpha = 0.08f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = card.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+// The dominant panel: accent wash, headline on the left, oversized watermark
+// icon on the right — balanced at any height instead of a mostly-empty box.
+@Composable
+private fun HeroCard(
+    card: HomeCard,
+    modifier: Modifier = Modifier,
+) {
+    val label = stringResource(card.labelRes)
+    val accents = LocalNovaAccents.current
+    NovaClickable(
+        onClick = card.onClick,
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        focusedScale = 1.02f,
+        accessibilityLabel = label,
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(NovaGlassHighlight)
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            accents.accent.copy(alpha = 0.22f),
+                            accents.accentAlt.copy(alpha = 0.10f),
+                            Color.Transparent,
+                        ),
+                    ),
+                ),
+        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 24.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Spacer(Modifier.height(10.dp))
+                Box(
+                    modifier = Modifier
+                        .size(width = 46.dp, height = 4.dp)
+                        .background(accents.gradient, RoundedCornerShape(2.dp)),
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(84.dp)
+                    .border(1.5.dp, accents.gradient, CircleShape)
+                    .background(accents.accent.copy(alpha = 0.10f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = card.icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(40.dp),
+                )
+            }
+        }
+    }
+}
+
+// One horizontal rail of channels; hidden entirely while it has no content.
+@Composable
+private fun ChannelRail(
+    title: String,
+    channels: List<LiveChannel>,
+    inset: Dp,
+    onPlayChannel: (Long) -> Unit,
+) {
+    if (channels.isEmpty()) return
+    Column(modifier = Modifier.padding(top = 6.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.padding(start = inset, bottom = 10.dp),
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(channels, key = { it.id }) { channel ->
+                NovaClickable(
+                    onClick = { onPlayChannel(channel.id) },
+                    modifier = Modifier
+                        .padding(inset)
+                        .size(width = 124.dp, height = 96.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    focusedScale = 1.06f,
+                    accessibilityLabel = channel.name,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.align(Alignment.Center),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(46.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            AsyncImage(
+                                model = channel.logoUrl,
+                                contentDescription = null,
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                            )
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = channel.name,
+                            style = MaterialTheme.typography.labelMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                        )
+                    }
+                }
             }
         }
     }
@@ -332,7 +662,7 @@ private fun Wordmark() {
     Text(
         text = stringResource(R.string.app_name).uppercase(),
         style = TextStyle(
-            brush = NovaAccentGradient,
+            brush = LocalNovaAccents.current.gradient,
             fontSize = 22.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 5.sp,
@@ -366,8 +696,8 @@ private fun HomeCardItem(
             Box(
                 modifier = Modifier
                     .size(58.dp)
-                    .border(1.5.dp, NovaAccentGradient, CircleShape)
-                    .background(NovaAccent.copy(alpha = 0.08f), CircleShape),
+                    .border(1.5.dp, LocalNovaAccents.current.gradient, CircleShape)
+                    .background(LocalNovaAccents.current.accent.copy(alpha = 0.08f), CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(

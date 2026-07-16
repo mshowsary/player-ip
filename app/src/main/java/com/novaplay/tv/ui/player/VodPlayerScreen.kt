@@ -69,7 +69,7 @@ import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.movies.formatPosition
-import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.LocalNovaAccents
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 
@@ -490,7 +490,7 @@ private fun SeekBar(
                 .fillMaxWidth(fraction)
                 .height(if (active) 7.dp else 4.dp)
                 .clip(CircleShape)
-                .background(NovaAccentGradient),
+                .background(LocalNovaAccents.current.gradient),
         )
         Box(
             modifier = Modifier.fillMaxWidth(fraction),

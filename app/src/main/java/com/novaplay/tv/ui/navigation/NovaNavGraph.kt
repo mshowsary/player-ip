@@ -95,6 +95,9 @@ fun NovaNavGraph(
                         onOpenSeries = { navController.navigateTopLevel(Routes.SERIES) },
                         onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
                         onOpenSettings = { navController.navigateTopLevel(Routes.SETTINGS) },
+                        onPlayChannel = { channelId ->
+                            navController.navigate(Routes.livePlayer(channelId, -1L))
+                        },
                     )
                 }
 

@@ -29,6 +29,34 @@ enum class LiveFormat(val label: String) {
     TS("MPEG-TS"),
 }
 
+/**
+ * Home hub arrangement. Switchable live from Settings so both testers can
+ * compare on real devices; the winner can later become a brand-pack default.
+ * (A full-width Rows variant was built and rejected by owner testing — banner
+ * lists waste the width TV screens have most of.)
+ */
+enum class HomeLayout(val label: String) {
+    CLASSIC("Classic grid"),
+    HERO("Hero"),
+}
+
+/**
+ * User-selectable accent pair applied on top of the brand defaults. BRAND
+ * keeps the white-label pack's colors; the presets restyle the whole app
+ * (focus, gradients, buttons) instantly and persist per device.
+ */
+enum class AccentTheme(
+    val label: String,
+    val accentHex: String?,
+    val accentAltHex: String?,
+) {
+    BRAND("Brand", null, null),
+    OCEAN("Ocean", "#38BDF8", "#34D399"),
+    SUNSET("Sunset", "#FB923C", "#F43F5E"),
+    ROYAL("Royal", "#818CF8", "#E879F9"),
+    EMERALD("Emerald", "#34D399", "#FBBF24"),
+}
+
 /** How live video fills the screen; cycled from the player and persisted. */
 enum class VideoScale {
     FIT,
@@ -130,6 +158,8 @@ class AppPreferences @Inject constructor(
         val DEVICE_MAC = stringPreferencesKey("device_mac")
         val DEVICE_KEY = stringPreferencesKey("device_key")
         val UI_MODE = stringPreferencesKey("ui_mode")
+        val HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val ACCENT_THEME = stringPreferencesKey("accent_theme")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
         val VIDEO_SCALE = stringPreferencesKey("video_scale")
         val PLAYER_GESTURES = booleanPreferencesKey("player_gestures_enabled")
@@ -191,6 +221,24 @@ class AppPreferences @Inject constructor(
     /** Stores the navigation-style override; takes effect live via [uiMode] collectors. */
     suspend fun setUiMode(mode: UiModePreference) {
         context.dataStore.edit { it[Keys.UI_MODE] = mode.name }
+    }
+
+    val homeLayout: Flow<HomeLayout> = context.dataStore.data
+        .map { it[Keys.HOME_LAYOUT].toEnum(HomeLayout.CLASSIC) }
+        .distinctUntilChanged()
+
+    val accentTheme: Flow<AccentTheme> = context.dataStore.data
+        .map { it[Keys.ACCENT_THEME].toEnum(AccentTheme.BRAND) }
+        .distinctUntilChanged()
+
+    /** Stores the accent choice; the whole app restyles live via [accentTheme] collectors. */
+    suspend fun setAccentTheme(theme: AccentTheme) {
+        context.dataStore.edit { it[Keys.ACCENT_THEME] = theme.name }
+    }
+
+    /** Stores the Home hub arrangement; the hub restyles live via [homeLayout] collectors. */
+    suspend fun setHomeLayout(layout: HomeLayout) {
+        context.dataStore.edit { it[Keys.HOME_LAYOUT] = layout.name }
     }
 
     val liveFormat: Flow<LiveFormat> = context.dataStore.data

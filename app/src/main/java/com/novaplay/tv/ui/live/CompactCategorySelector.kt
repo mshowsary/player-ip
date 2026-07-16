@@ -46,7 +46,7 @@ import androidx.tv.material3.Text
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.NovaDialog
-import com.novaplay.tv.ui.theme.NovaAccentGradient
+import com.novaplay.tv.ui.theme.LocalNovaAccents
 import com.novaplay.tv.ui.theme.isTvDevice
 
 private const val CATEGORY_DIALOG_THRESHOLD = 8
@@ -247,7 +247,7 @@ private fun CompactCategoryChip(
             .semantics { this.selected = selected }
             .then(
                 if (selected) {
-                    Modifier.border(1.dp, NovaAccentGradient, RoundedCornerShape(50))
+                    Modifier.border(1.dp, LocalNovaAccents.current.gradient, RoundedCornerShape(50))
                 } else {
                     Modifier
                 },
