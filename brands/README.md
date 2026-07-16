@@ -34,6 +34,7 @@ brands/<slug>/
 | `brand.accentColorAlt` | no | Gradient partner `#RRGGBB` (default violet) |
 | `brand.allowPersonalPlaylists` | no | `false` hides the personal-source entry on the activation screen (default `true`) |
 | `brand.portalBaseUrl` | no | Preset managed portal; release still enforces HTTPS and non-reserved hosts |
+| `brand.updateUrl` | no | HTTPS manifest URL for the sideload update channel (adds a "Check for updates" action under Settings → This device); unset for store-distributed brands |
 
 ## Rules
 

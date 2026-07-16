@@ -1,5 +1,7 @@
 ﻿package com.novaplay.tv.ui.settings
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -39,6 +41,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -68,6 +71,7 @@ import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.ManagedAccessState
 import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.data.repo.SyncStatus
+import com.novaplay.tv.data.repo.UpdateCheckState
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
@@ -93,9 +97,17 @@ fun PolishedSettingsScreen(
     val cacheCleared by viewModel.cacheCleared.collectAsStateWithLifecycle()
     val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
     val managedRefreshMessage by viewModel.managedRefreshMessage.collectAsStateWithLifecycle()
+    val updateState by viewModel.updateState.collectAsStateWithLifecycle()
     val firstFocus = remember { FocusRequester() }
     val compact = isCompactWidth()
     val isTv = isTvDevice()
+
+    // Update links open in the browser/downloader — the app never installs
+    // packages itself.
+    val context = LocalContext.current
+    val openDownload: (String) -> Unit = { url ->
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+    }
 
     LaunchedEffect(isTv) {
         if (isTv) runCatching { firstFocus.requestFocus() }
@@ -155,7 +167,14 @@ fun PolishedSettingsScreen(
                         viewModel::setSubtitleEdge,
                     )
                 }
-                item { DevicePanel(deviceInfo) }
+                item {
+                    DevicePanel(
+                        info = deviceInfo,
+                        updateState = updateState,
+                        onCheckUpdates = viewModel::checkForUpdates,
+                        onOpenDownload = openDownload,
+                    )
+                }
             }
         } else {
             Row(modifier = Modifier.weight(1f)) {
@@ -192,7 +211,14 @@ fun PolishedSettingsScreen(
                             viewModel::clearImageCache,
                         )
                     }
-                    item { DevicePanel(deviceInfo) }
+                    item {
+                    DevicePanel(
+                        info = deviceInfo,
+                        updateState = updateState,
+                        onCheckUpdates = viewModel::checkForUpdates,
+                        onOpenDownload = openDownload,
+                    )
+                }
                 }
 
                 Spacer(Modifier.width(24.dp))
@@ -497,7 +523,12 @@ private fun SubtitlePanel(
 
 /** Panel listing the device identifiers (MAC, device key, app version) used for portal activation and support. */
 @Composable
-private fun DevicePanel(info: DeviceInfo) {
+private fun DevicePanel(
+    info: DeviceInfo,
+    updateState: UpdateCheckState,
+    onCheckUpdates: () -> Unit,
+    onOpenDownload: (String) -> Unit,
+) {
     SettingsPanel(
         title = "This device",
         description = "These identifiers are used for managed portal activation and support.",
@@ -505,6 +536,42 @@ private fun DevicePanel(info: DeviceInfo) {
         DeviceInfoRow("MAC address", info.mac)
         DeviceInfoRow("Device key", info.deviceKey)
         DeviceInfoRow("App version", info.appVersion)
+
+        // Sideload update channel — present only when the brand configures one.
+        if (updateState != UpdateCheckState.Disabled) {
+            NovaButton(
+                text = if (updateState == UpdateCheckState.Checking) "Checking…" else "Check for updates",
+                onClick = onCheckUpdates,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            when (updateState) {
+                UpdateCheckState.UpToDate -> Text(
+                    text = "You are on the latest version.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                is UpdateCheckState.Failed -> Text(
+                    text = updateState.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                is UpdateCheckState.Available -> {
+                    Text(
+                        text = "Version ${updateState.versionName} is available." +
+                            (updateState.notes?.let { "\n$it" } ?: ""),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    NovaButton(
+                        text = "Get version ${updateState.versionName}",
+                        onClick = { onOpenDownload(updateState.apkUrl) },
+                        prominent = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                else -> Unit
+            }
+        }
     }
 }
 

@@ -73,6 +73,26 @@ require(brandAllowPersonalText in setOf("true", "false")) {
 val brandAllowPersonal = brandAllowPersonalText.toBoolean()
 val brandPortalBaseUrl = brandValue("brand.portalBaseUrl")
 
+// Optional sideload update channel: environment > gradle property > brand pack.
+// Validated for shape here; the app additionally enforces HTTPS (or local
+// debug HTTP) before any request leaves the device.
+val configuredUpdateUrl = providers.gradleProperty("novaplayUpdateUrl")
+    .orElse(providers.environmentVariable("NOVAPLAY_UPDATE_URL"))
+    .orElse(brandValue("brand.updateUrl") ?: "")
+    .get()
+    .trim()
+if (configuredUpdateUrl.isNotEmpty()) {
+    val updateUri = runCatching { URI(configuredUpdateUrl) }.getOrNull()
+    require(
+        updateUri != null &&
+            updateUri.scheme?.lowercase() in setOf("http", "https") &&
+            !updateUri.host.isNullOrBlank() &&
+            updateUri.userInfo == null,
+    ) {
+        "Update URL '$configuredUpdateUrl' must be a plain http(s) URL without credentials"
+    }
+}
+
 // Portal resolution order: environment > gradle property > brand pack > placeholder.
 val configuredPortalBaseUrl = providers.gradleProperty("novaplayPortalBaseUrl")
     .orElse(providers.environmentVariable("NOVAPLAY_PORTAL_BASE_URL"))
@@ -168,6 +188,7 @@ android {
         buildConfigField("String", "BRAND_ACCENT", brandAccent.asBuildConfigString())
         buildConfigField("String", "BRAND_ACCENT_ALT", brandAccentAlt.asBuildConfigString())
         buildConfigField("boolean", "ALLOW_PERSONAL_PLAYLISTS", brandAllowPersonal.toString())
+        buildConfigField("String", "UPDATE_MANIFEST_URL", configuredUpdateUrl.asBuildConfigString())
         buildConfigField("String", "PORTAL_BASE_URL", configuredPortalBaseUrl.asBuildConfigString())
         buildConfigField("boolean", "PORTAL_CONFIGURED", portalConfigured.toString())
     }
