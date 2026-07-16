@@ -3,6 +3,7 @@ package com.novaplay.tv
 import android.app.ActivityManager
 import android.app.Application
 import android.os.StrictMode
+import androidx.work.Configuration
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
@@ -17,10 +18,15 @@ import javax.inject.Inject
 /**
  * Application entry point: hosts the Hilt graph, reconciles the background sync
  * schedule at startup, supplies the app-wide Coil image loader, and enables
- * non-fatal leak/network diagnostics in debug builds.
+ * non-fatal leak/network diagnostics in debug builds. WorkManager initializes
+ * on demand through [workManagerConfiguration] instead of at process start.
  */
 @HiltAndroidApp
-class NovaPlayApp : Application(), ImageLoaderFactory {
+class NovaPlayApp : Application(), ImageLoaderFactory, Configuration.Provider {
+
+    /** Default WorkManager configuration, created only when first used. */
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder().build()
 
     @Inject
     lateinit var backgroundSyncScheduler: BackgroundSyncScheduler

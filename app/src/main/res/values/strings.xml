@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Single source of truth for the product name; rename here + Gradle namespace. -->
-    <string name="app_name">NovaPlay</string>
+    <!-- app_name is generated per brand pack (brands/<slug>/brand.properties)
+         as a Gradle resValue; do not define it here. -->
 
     <string name="nav_home">Home</string>
     <string name="nav_live">Live</string>

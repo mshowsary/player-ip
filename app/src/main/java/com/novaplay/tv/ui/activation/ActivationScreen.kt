@@ -47,6 +47,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
@@ -164,7 +165,10 @@ fun ActivationScreen(
                         primaryActionFocus = primaryActionFocus,
                     )
                     StepsPanel()
-                    PersonalPlaylistPanel(onAddPersonalPlaylist)
+                    // Managed-only brands hide the personal-source path entirely.
+                    if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                        PersonalPlaylistPanel(onAddPersonalPlaylist)
+                    }
                 }
             } else {
                 Row(
@@ -179,7 +183,9 @@ fun ActivationScreen(
                         modifier = Modifier.weight(0.9f),
                     ) {
                         StepsPanel()
-                        PersonalPlaylistPanel(onAddPersonalPlaylist)
+                        if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                            PersonalPlaylistPanel(onAddPersonalPlaylist)
+                        }
                     }
                     PairingPanel(
                         state = state,
