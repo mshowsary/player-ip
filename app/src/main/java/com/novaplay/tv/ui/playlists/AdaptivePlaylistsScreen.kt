@@ -43,6 +43,7 @@ import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
+import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.repo.PlaylistDraft
 import com.novaplay.tv.data.repo.PortalPairingSession
@@ -107,6 +108,7 @@ fun AdaptivePlaylistsScreen(
         PlaylistHeader(
             compact = compact,
             busy = busy,
+            allowPersonal = BuildConfig.ALLOW_PERSONAL_PLAYLISTS,
             onAdd = { editorDraft = PlaylistDraft() },
             onImport = {
                 importLauncher.launch(
@@ -245,6 +247,7 @@ fun AdaptivePlaylistsScreen(
 private fun PlaylistHeader(
     compact: Boolean,
     busy: Boolean,
+    allowPersonal: Boolean,
     onAdd: () -> Unit,
     onImport: () -> Unit,
     onRefreshPortal: () -> Unit,
@@ -258,25 +261,31 @@ private fun PlaylistHeader(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            NovaButton(
-                text = "Add playlist",
-                onClick = { if (!busy) onAdd() },
-                prominent = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            onPhoneEntry?.let { start ->
+            // Managed-only brands: the provider assigns playlists; every
+            // personal entry point disappears, not just the activation one.
+            if (allowPersonal) {
                 NovaButton(
-                    text = "Add from your phone",
-                    onClick = { if (!busy) start() },
+                    text = "Add playlist",
+                    onClick = { if (!busy) onAdd() },
+                    prominent = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+                onPhoneEntry?.let { start ->
+                    NovaButton(
+                        text = "Add from your phone",
+                        onClick = { if (!busy) start() },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                NovaButton(
-                    text = "Import M3U",
-                    onClick = { if (!busy) onImport() },
-                    modifier = Modifier.weight(1f),
-                )
+                if (allowPersonal) {
+                    NovaButton(
+                        text = "Import M3U",
+                        onClick = { if (!busy) onImport() },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
                 NovaButton(
                     text = "Refresh portal",
                     onClick = { if (!busy) onRefreshPortal() },
@@ -299,11 +308,13 @@ private fun PlaylistHeader(
                 )
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                NovaButton(text = "Add playlist", onClick = { if (!busy) onAdd() }, prominent = true)
-                onPhoneEntry?.let { start ->
-                    NovaButton(text = "Add from your phone", onClick = { if (!busy) start() })
+                if (allowPersonal) {
+                    NovaButton(text = "Add playlist", onClick = { if (!busy) onAdd() }, prominent = true)
+                    onPhoneEntry?.let { start ->
+                        NovaButton(text = "Add from your phone", onClick = { if (!busy) start() })
+                    }
+                    NovaButton(text = "Import M3U", onClick = { if (!busy) onImport() })
                 }
-                NovaButton(text = "Import M3U", onClick = { if (!busy) onImport() })
                 NovaButton(text = "Refresh portal", onClick = { if (!busy) onRefreshPortal() })
             }
         }
