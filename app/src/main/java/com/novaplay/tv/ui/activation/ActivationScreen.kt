@@ -48,7 +48,9 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.core.PortalEndpointPolicy
 import com.novaplay.tv.ui.components.QrImage
+import com.novaplay.tv.ui.playlists.PhoneEntryLaunch
 import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
@@ -135,13 +137,13 @@ fun ActivationScreen(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = "Connect NovaPlay to your provider",
+                text = "Set up your player",
                 style = MaterialTheme.typography.headlineMedium,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "Use the one-time code below. Your provider credentials never need to be typed on this device.",
+                text = "Got a provider? Give them the one-time code below — nothing to type here. Have your own playlist? Use the options further down.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -618,14 +620,29 @@ private fun PersonalPlaylistPanel(onAddPersonalPlaylist: () -> Unit) {
             )
             .padding(16.dp),
     ) {
-        Text(text = "Using your own source?", style = MaterialTheme.typography.titleMedium)
+        Text(text = "Have your own playlist?", style = MaterialTheme.typography.titleMedium)
         Text(
-            text = "Add personal Xtream credentials or an M3U playlist without connecting to a provider portal.",
+            text = "No provider needed. Type it on your phone (easiest) or enter it here with the remote.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        val phoneEntryReachable = PortalEndpointPolicy
+            .assess(BuildConfig.PORTAL_BASE_URL, BuildConfig.DEBUG)
+            .let { it.configured && it.transportAllowed } && !BuildConfig.MOCK_ACTIVATION
+        if (phoneEntryReachable) {
+            NovaButton(
+                text = "Add from your phone",
+                onClick = {
+                    // Jumps straight to the phone-entry code — no menu digging.
+                    PhoneEntryLaunch.requested = true
+                    onAddPersonalPlaylist()
+                },
+                prominent = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         NovaButton(
-            text = "Add my own playlist",
+            text = "Enter it on this device",
             onClick = onAddPersonalPlaylist,
             modifier = Modifier.fillMaxWidth(),
         )
