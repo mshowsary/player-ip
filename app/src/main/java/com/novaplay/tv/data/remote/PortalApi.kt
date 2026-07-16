@@ -146,4 +146,43 @@ interface PortalApi {
         @Path("mac") mac: String,
         @Query("key") deviceKey: String,
     ): Response<PortalPlaylistsResponse>
+
+    /** Starts a phone-to-TV playlist delivery; the TV shows the code and QR. */
+    @POST("api/v1/playlist-deliveries/sessions")
+    suspend fun createDeliverySession(
+        @Body request: CreateDeliveryRequest,
+    ): Response<PairingSessionDto>
+
+    /** Polls a delivery session; "ready" carries the playlist exactly once. */
+    @GET("api/v1/playlist-deliveries/sessions/{sessionId}")
+    suspend fun getDeliveryStatus(
+        @Path("sessionId") sessionId: String,
+        @Header("X-Delivery-Secret") sessionSecret: String,
+    ): Response<DeliveryStatusDto>
 }
+
+/** Create payload for a phone-entry playlist delivery session. */
+@Serializable
+data class CreateDeliveryRequest(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("device_name") val deviceName: String,
+    val platform: String = "android",
+)
+
+/** One playlist submitted from the viewer's phone; mirrors PortalPlaylistDto minus id. */
+@Serializable
+data class DeliveredPlaylistDto(
+    val name: String,
+    val type: String,
+    val server: String? = null,
+    val username: String? = null,
+    val password: String? = null,
+    val url: String? = null,
+)
+
+/** Poll result for a delivery session; playlist only present on "ready". */
+@Serializable
+data class DeliveryStatusDto(
+    val status: String,
+    val playlist: DeliveredPlaylistDto? = null,
+)

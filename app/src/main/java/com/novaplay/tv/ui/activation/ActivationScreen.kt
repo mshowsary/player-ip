@@ -48,6 +48,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.ui.components.QrImage
 import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
@@ -259,6 +260,29 @@ private fun PairingPanel(
                 address = state.verificationUri,
                 onCopy = onCopyPortal,
             )
+            if (state.verificationUri.isNotBlank()) {
+                // One scan replaces reading the code out loud: the phone lands
+                // on the portal with the code prefilled.
+                val activateUrl = remember(state.verificationUri, state.userCode) {
+                    if (state.verificationUri.contains('?')) {
+                        state.verificationUri
+                    } else {
+                        state.verificationUri.trimEnd('/') + "?code=" + state.userCode
+                    }
+                }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    QrImage(content = activateUrl, size = 132.dp)
+                    Text(
+                        text = "Or scan with your phone",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         } else {
             PreparingCodeCard()
         }
