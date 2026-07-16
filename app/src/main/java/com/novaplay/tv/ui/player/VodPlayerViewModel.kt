@@ -11,7 +11,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import com.novaplay.tv.core.DeviceProfile
 import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.WatchProgress
 import com.novaplay.tv.data.prefs.AppPreferences
@@ -90,6 +93,7 @@ private data class TrackCandidate(
  * auto-hiding controls state. Pure decision rules live in [VodResumePolicy] and
  * [VodRecoveryPolicy] so they stay testable with plain JUnit.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 @HiltViewModel
 class VodPlayerViewModel @Inject constructor(
     @ApplicationContext context: Context,
@@ -97,6 +101,7 @@ class VodPlayerViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val prefs: AppPreferences,
     @ApplicationScope private val appScope: CoroutineScope,
+    deviceProfile: DeviceProfile,
 ) : ViewModel() {
 
     private val mediaType: String = checkNotNull(savedStateHandle["mediaType"])
@@ -109,7 +114,23 @@ class VodPlayerViewModel @Inject constructor(
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
 
-    val player: ExoPlayer = ExoPlayer.Builder(context).build()
+    // RAM-class buffering: low-memory boxes cap the media buffer so it never
+    // competes with the UI for heap; see PlaybackBufferPolicy.
+    val player: ExoPlayer = run {
+        val spec = PlaybackBufferPolicy.vodBuffers(deviceProfile.isLowRamDevice)
+        ExoPlayer.Builder(context)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        spec.minBufferMs,
+                        spec.maxBufferMs,
+                        spec.playbackBufferMs,
+                        spec.rebufferMs,
+                    )
+                    .build(),
+            )
+            .build()
+    }
 
     private var hideControlsJob: Job? = null
     private var recoveryJob: Job? = null

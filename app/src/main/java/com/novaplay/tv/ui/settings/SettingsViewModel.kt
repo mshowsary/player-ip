@@ -26,6 +26,7 @@ import com.novaplay.tv.data.repo.AppDiagnosticsRepository
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.repo.DebugManagedPolicyPreset
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.ui.player.PlaybackMetrics
 import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
@@ -69,8 +70,15 @@ class SettingsViewModel @Inject constructor(
     private val backgroundSyncScheduler: BackgroundSyncScheduler,
     private val diagnosticsRepository: AppDiagnosticsRepository,
     deviceIdentity: DeviceIdentity,
+    playbackMetrics: PlaybackMetrics,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
+
+    /** Time-to-picture of the most recent channel start, for Sync & health. */
+    val lastZapMs: StateFlow<Long?> = playbackMetrics.lastZapMs
+
+    /** Slowest channel start seen this session. */
+    val worstZapMs: StateFlow<Long?> = playbackMetrics.worstZapMs
 
     val uiMode: StateFlow<UiModePreference> = prefs.uiMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiModePreference.AUTO)

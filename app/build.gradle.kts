@@ -311,6 +311,9 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.datastore.preferences)
     implementation(libs.work.runtime)
+    // Compiles the baseline profiles shipped inside Compose/Media3 at install
+    // time on sideloaded devices (no Play optimization pass on IPTV boxes).
+    implementation(libs.profileinstaller)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

@@ -1,6 +1,7 @@
 package com.novaplay.tv.ui.live
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,6 +12,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
+import com.novaplay.tv.core.DeviceProfile
 import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.epg.EpgNowNext
@@ -19,6 +21,8 @@ import com.novaplay.tv.data.prefs.SubtitleStyle
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.prefs.VideoScale
 import com.novaplay.tv.ui.player.GestureHintSession
+import com.novaplay.tv.ui.player.PlaybackBufferPolicy
+import com.novaplay.tv.ui.player.PlaybackMetrics
 import com.novaplay.tv.ui.player.PlaybackRetryDecision
 import com.novaplay.tv.ui.player.PlaybackRetryPolicy
 import com.novaplay.tv.ui.player.PlayerDigitAction
@@ -80,6 +84,8 @@ class LivePlayerViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
     private val prefs: AppPreferences,
     private val gestureHintSession: GestureHintSession,
+    private val playbackMetrics: PlaybackMetrics,
+    deviceProfile: DeviceProfile,
 ) : ViewModel() {
 
     private val initialChannelId: Long = checkNotNull(savedStateHandle["channelId"])
@@ -297,20 +303,32 @@ class LivePlayerViewModel @Inject constructor(
     private val liveFormat = prefs.liveFormat
 
     // Low-latency load control: start playback after ~1.2 s of buffer so
-    // zapping feels instant on live streams.
-    val player: ExoPlayer = ExoPlayer.Builder(context)
-        .setLoadControl(
-            DefaultLoadControl.Builder()
-                .setBufferDurationsMs(15_000, 30_000, 1_200, 2_400)
-                .build(),
-        )
-        .build()
+    // zapping feels instant; the buffer ceiling shrinks on low-RAM boxes
+    // (PlaybackBufferPolicy) so media buffering never starves the UI heap.
+    val player: ExoPlayer = run {
+        val spec = PlaybackBufferPolicy.liveBuffers(deviceProfile.isLowRamDevice)
+        ExoPlayer.Builder(context)
+            .setLoadControl(
+                DefaultLoadControl.Builder()
+                    .setBufferDurationsMs(
+                        spec.minBufferMs,
+                        spec.maxBufferMs,
+                        spec.playbackBufferMs,
+                        spec.rebufferMs,
+                    )
+                    .build(),
+            )
+            .build()
+    }
 
     private var candidateUrls: List<String> = emptyList()
     private var sourceIndex = 0
     private var failuresOnCurrentSource = 0
     private var playbackGeneration = 0L
     private var foregroundActive = true
+    // Zap stopwatch: armed by playChannel, disarmed at the first READY. Retries
+    // count toward the measurement — it is honest time-to-picture.
+    private var zapStartedAtMs: Long? = null
 
     private var overlayJob: Job? = null
     private var retryJob: Job? = null
@@ -334,6 +352,10 @@ class LivePlayerViewModel @Inject constructor(
                         armStallWatchdog(playbackGeneration)
                     }
                     Player.STATE_READY -> {
+                        zapStartedAtMs?.let { startedAt ->
+                            playbackMetrics.recordZap(SystemClock.elapsedRealtime() - startedAt)
+                            zapStartedAtMs = null
+                        }
                         stallWatchdogJob?.cancel()
                         retryJob?.cancel()
                         _uiState.update {
@@ -426,6 +448,7 @@ class LivePlayerViewModel @Inject constructor(
     // Stop on activity stop (kills the stream), re-prepare when it returns.
     fun onLifecycleStop() {
         foregroundActive = false
+        zapStartedAtMs = null
         playbackGeneration++
         cancelRecoveryJobs()
         player.stop()
@@ -457,6 +480,7 @@ class LivePlayerViewModel @Inject constructor(
     private suspend fun playChannel(channel: LiveChannel) {
         // Remember where we came from so recall ("0" / the swap button) works.
         _uiState.value.channel?.takeIf { it.id != channel.id }?.let { previousChannel = it }
+        zapStartedAtMs = SystemClock.elapsedRealtime()
         playbackGeneration++
         cancelRecoveryJobs()
         sourceIndex = 0
