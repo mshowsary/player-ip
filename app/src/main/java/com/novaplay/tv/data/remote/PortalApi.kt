@@ -159,6 +159,19 @@ interface PortalApi {
         @Path("sessionId") sessionId: String,
         @Header("X-Delivery-Secret") sessionSecret: String,
     ): Response<DeliveryStatusDto>
+
+    /** Registers this installation for the self-service trial and identity. */
+    @POST("api/v1/player/register")
+    suspend fun registerPlayer(
+        @Body request: RegisterPlayerRequest,
+    ): Response<PlayerStatusDto>
+
+    /** Fetches the current license state; authenticated by the device secret. */
+    @GET("api/v1/player/status")
+    suspend fun playerStatus(
+        @Query("device_id") deviceId: String,
+        @Header("X-Player-Secret") secret: String,
+    ): Response<PlayerStatusDto>
 }
 
 /** Create payload for a phone-entry playlist delivery session. */
@@ -185,4 +198,21 @@ data class DeliveredPlaylistDto(
 data class DeliveryStatusDto(
     val status: String,
     val playlist: DeliveredPlaylistDto? = null,
+)
+
+/** First-contact registration for the self-service player license. */
+@Serializable
+data class RegisterPlayerRequest(
+    @SerialName("device_id") val deviceId: String,
+    @SerialName("device_name") val deviceName: String,
+    val platform: String = "android",
+)
+
+/** License state; device_secret is present only in the registration response. */
+@Serializable
+data class PlayerStatusDto(
+    @SerialName("device_code") val deviceCode: String,
+    val status: String,
+    @SerialName("trial_days_left") val trialDaysLeft: Int = 0,
+    @SerialName("device_secret") val deviceSecret: String? = null,
 )
