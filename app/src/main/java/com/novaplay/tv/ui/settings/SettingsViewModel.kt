@@ -9,8 +9,10 @@ import coil.imageLoader
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.background.BackgroundSyncScheduler
 import com.novaplay.tv.core.DeviceIdentity
+import com.novaplay.tv.data.prefs.AccentTheme
 import com.novaplay.tv.data.prefs.AppPreferences
 import com.novaplay.tv.data.prefs.BackgroundSyncMode
+import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LastSyncSummary
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
@@ -26,6 +28,7 @@ import com.novaplay.tv.data.repo.AppDiagnosticsRepository
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.data.repo.DebugManagedPolicyPreset
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
+import com.novaplay.tv.ui.player.PlaybackMetrics
 import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
@@ -72,6 +75,7 @@ class SettingsViewModel @Inject constructor(
     private val diagnosticsRepository: AppDiagnosticsRepository,
     private val updateRepository: UpdateRepository,
     deviceIdentity: DeviceIdentity,
+    playbackMetrics: PlaybackMetrics,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -91,8 +95,20 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /** Time-to-picture of the most recent channel start, for Sync & health. */
+    val lastZapMs: StateFlow<Long?> = playbackMetrics.lastZapMs
+
+    /** Slowest channel start seen this session. */
+    val worstZapMs: StateFlow<Long?> = playbackMetrics.worstZapMs
+
     val uiMode: StateFlow<UiModePreference> = prefs.uiMode
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiModePreference.AUTO)
+
+    val homeLayout: StateFlow<HomeLayout> = prefs.homeLayout
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
+
+    val accentTheme: StateFlow<AccentTheme> = prefs.accentTheme
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AccentTheme.BRAND)
 
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
@@ -138,6 +154,16 @@ class SettingsViewModel @Inject constructor(
     /** Persists the interface mode override (auto, touch or TV). */
     fun setUiMode(mode: UiModePreference) {
         viewModelScope.launch { prefs.setUiMode(mode) }
+    }
+
+    /** Persists the Home hub arrangement; Home restyles live. */
+    fun setHomeLayout(layout: HomeLayout) {
+        viewModelScope.launch { prefs.setHomeLayout(layout) }
+    }
+
+    /** Persists the accent choice; the entire app restyles live. */
+    fun setAccentTheme(theme: AccentTheme) {
+        viewModelScope.launch { prefs.setAccentTheme(theme) }
     }
 
     /** Persists the subtitle text size; the preview and VOD playback pick it up immediately. */

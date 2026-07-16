@@ -84,6 +84,14 @@ class ContentRepository @Inject constructor(
     /** Channel lookup by local row id; null if the row was replaced by a sync. */
     suspend fun channelById(id: Long): LiveChannel? = db.liveDao().byId(id)
 
+    /** Recently watched channels for the Home rail (bounded, newest first). */
+    fun recentChannelsRail(playlistId: Long, limit: Int = 12): Flow<List<LiveChannel>> =
+        db.liveDao().recentChannelsRail(playlistId, limit)
+
+    /** Bookmarked channels for the Home rail (bounded, newest first). */
+    fun bookmarkedChannelsRail(playlistId: Long, limit: Int = 12): Flow<List<LiveChannel>> =
+        db.liveDao().bookmarkedChannelsRail(playlistId, limit)
+
     /** Live category lookup by local row id, for restoring rail state. */
     suspend fun liveCategoryById(id: Long) = db.liveDao().categoryById(id)
 

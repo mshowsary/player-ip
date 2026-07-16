@@ -1,4 +1,4 @@
-package com.novaplay.tv.ui.settings
+﻿package com.novaplay.tv.ui.settings
 
 import android.content.Intent
 import android.net.Uri
@@ -57,6 +57,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.data.prefs.AccentTheme
+import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
 import com.novaplay.tv.data.prefs.SubtitleColor
@@ -85,6 +87,8 @@ fun PolishedSettingsScreen(
     viewModel: SettingsViewModel = hiltViewModel(),
 ) {
     val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
+    val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
+    val accentTheme by viewModel.accentTheme.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val liveFormat by viewModel.liveFormat.collectAsStateWithLifecycle()
     val playerGestures by viewModel.playerGesturesEnabled.collectAsStateWithLifecycle()
@@ -128,7 +132,7 @@ fun PolishedSettingsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
+                item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
                 item {
                     ManagedAccessPanel(
                         policy = managedAccess,
@@ -181,7 +185,7 @@ fun PolishedSettingsScreen(
                         .weight(1f)
                         .fillMaxHeight(),
                 ) {
-                    item { InterfacePanel(uiMode, firstFocus, viewModel::setUiMode) }
+                    item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
                     item {
                         ManagedAccessPanel(
                             policy = managedAccess,
@@ -249,8 +253,12 @@ fun PolishedSettingsScreen(
 @Composable
 private fun InterfacePanel(
     mode: UiModePreference,
+    homeLayout: HomeLayout,
+    accentTheme: AccentTheme,
     firstFocus: FocusRequester,
     onSelect: (UiModePreference) -> Unit,
+    onSelectHomeLayout: (HomeLayout) -> Unit,
+    onSelectAccentTheme: (AccentTheme) -> Unit,
 ) {
     SettingsPanel(
         title = "Interface",
@@ -271,6 +279,28 @@ private fun InterfacePanel(
             },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
+        )
+        // Applies instantly, so layouts can be compared live on the device.
+        ChoiceGroup(
+            label = "Home layout",
+            options = HomeLayout.entries.map { it.label },
+            selectedIndex = homeLayout.ordinal,
+            onSelect = { onSelectHomeLayout(HomeLayout.entries[it]) },
+        )
+        Text(
+            text = when (homeLayout) {
+                HomeLayout.CLASSIC -> "Equal cards in an adaptive grid"
+                HomeLayout.HERO -> "A dominant Live TV panel with sections beside it"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        // Whole-app accent pair on top of the brand defaults.
+        ChoiceGroup(
+            label = "Accent color",
+            options = AccentTheme.entries.map { it.label },
+            selectedIndex = accentTheme.ordinal,
+            onSelect = { onSelectAccentTheme(AccentTheme.entries[it]) },
         )
     }
 }
@@ -424,7 +454,7 @@ private fun MaintenancePanel(
     ) {
         NovaButton(
             text = when (status) {
-                is SyncStatus.Syncing -> "Syncing ${status.step}…"
+                is SyncStatus.Syncing -> "Syncing ${status.step}â€¦"
                 else -> "Re-sync active playlist"
             },
             onClick = onSync,
@@ -439,7 +469,7 @@ private fun MaintenancePanel(
             )
         }
         NovaButton(
-            text = if (cacheCleared) "Image cache cleared ✓" else "Clear image cache",
+            text = if (cacheCleared) "Image cache cleared âœ“" else "Clear image cache",
             onClick = onClearCache,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -736,7 +766,7 @@ private fun DeviceInfoRow(label: String, value: String) {
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = value.ifBlank { "—" },
+            text = value.ifBlank { "â€”" },
             style = MaterialTheme.typography.bodyMedium,
             textAlign = TextAlign.End,
             maxLines = 1,

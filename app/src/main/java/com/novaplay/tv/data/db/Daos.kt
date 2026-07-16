@@ -177,6 +177,23 @@ interface LiveDao {
     @Query("SELECT COUNT(*) FROM live_channels WHERE playlistId = :playlistId")
     suspend fun channelCount(playlistId: Long): Int
 
+    // Home-hub rails: bounded, non-paged lists (a rail shows at most a dozen
+    // entries, so windowed paging would be overhead).
+    @Query(
+        """SELECT c.* FROM live_channels c
+           JOIN recent_views r ON r.playlistId = c.playlistId AND r.mediaType = 'live' AND r.remoteId = c.streamId
+           WHERE c.playlistId = :playlistId ORDER BY r.viewedAt DESC, c.id LIMIT :limit""",
+    )
+    fun recentChannelsRail(playlistId: Long, limit: Int): Flow<List<LiveChannel>>
+
+    /** Bookmarked channels for the Home rail, newest bookmark first. */
+    @Query(
+        """SELECT c.* FROM live_channels c
+           JOIN bookmarks b ON b.playlistId = c.playlistId AND b.mediaType = 'live' AND b.remoteId = c.streamId
+           WHERE c.playlistId = :playlistId ORDER BY b.createdAt DESC, c.id LIMIT :limit""",
+    )
+    fun bookmarkedChannelsRail(playlistId: Long, limit: Int): Flow<List<LiveChannel>>
+
     /** Distinct guide keys of one playlist; guide installs skip programmes for channels not in this set. */
     @Query(
         """SELECT DISTINCT epgChannelId FROM live_channels

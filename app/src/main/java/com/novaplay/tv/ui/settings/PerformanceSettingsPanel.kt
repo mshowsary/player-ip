@@ -52,6 +52,8 @@ fun PerformanceSettingsPanel(
     lastSync: LastSyncSummary,
     diagnostics: AppDiagnostics,
     message: String?,
+    lastZapMs: Long? = null,
+    worstZapMs: Long? = null,
     onBackgroundMode: (BackgroundSyncMode) -> Unit,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
@@ -135,6 +137,13 @@ fun PerformanceSettingsPanel(
                     value = "${lastSync.epgProgrammes} programmes",
                     stacked = compactContent,
                 )
+                lastZapMs?.let { last ->
+                    DiagnosticRow(
+                        label = "Channel start",
+                        value = "$last ms" + (worstZapMs?.let { " · slowest $it ms" } ?: ""),
+                        stacked = compactContent,
+                    )
+                }
                 lastSync.error?.let { error ->
                     Text(
                         text = error,
