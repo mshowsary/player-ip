@@ -230,12 +230,17 @@ fun LivePlayerScreen(
                     return@onPreviewKeyEvent true
                 }
                 when (event.key) {
-                    Key.DirectionUp -> {
+                    Key.DirectionUp, Key.ChannelUp -> {
                         viewModel.zapNext()
                         true
                     }
-                    Key.DirectionDown -> {
+                    Key.DirectionDown, Key.ChannelDown -> {
                         viewModel.zapPrev()
+                        true
+                    }
+                    // Fire TV and box remotes carry dedicated media keys.
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                        viewModel.togglePlayPause()
                         true
                     }
                     Key.DirectionLeft -> {

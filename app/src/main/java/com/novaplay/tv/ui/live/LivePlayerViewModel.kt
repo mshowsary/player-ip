@@ -5,6 +5,8 @@ import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
@@ -305,6 +307,8 @@ class LivePlayerViewModel @Inject constructor(
     // Low-latency load control: start playback after ~1.2 s of buffer so
     // zapping feels instant; the buffer ceiling shrinks on low-RAM boxes
     // (PlaybackBufferPolicy) so media buffering never starves the UI heap.
+    // Audio focus is handled so playback pauses for other media apps and
+    // calls, and unplugging headphones never blasts the speaker.
     val player: ExoPlayer = run {
         val spec = PlaybackBufferPolicy.liveBuffers(deviceProfile.isLowRamDevice)
         ExoPlayer.Builder(context)
@@ -318,6 +322,14 @@ class LivePlayerViewModel @Inject constructor(
                     )
                     .build(),
             )
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
     }
 
@@ -393,6 +405,15 @@ class LivePlayerViewModel @Inject constructor(
         viewModelScope.launch {
             contentRepository.channelById(initialChannelId)?.let { playChannel(it) }
         }
+    }
+
+    /**
+     * Remote play/pause: pauses the live buffer and resumes in place. After a
+     * long pause the source may have expired — the existing retry machinery
+     * recovers exactly as it does for any transient failure.
+     */
+    fun togglePlayPause() {
+        if (player.playWhenReady) player.pause() else player.play()
     }
 
     /** Zaps up to the next channel by number within the current category (indexed DB lookup). */

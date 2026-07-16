@@ -5,6 +5,7 @@ import android.os.SystemClock
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -115,7 +116,9 @@ class VodPlayerViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
 
     // RAM-class buffering: low-memory boxes cap the media buffer so it never
-    // competes with the UI for heap; see PlaybackBufferPolicy.
+    // competes with the UI for heap; see PlaybackBufferPolicy. Audio focus
+    // pauses playback for other media apps and calls; the becoming-noisy
+    // handler stops output when headphones unplug.
     val player: ExoPlayer = run {
         val spec = PlaybackBufferPolicy.vodBuffers(deviceProfile.isLowRamDevice)
         ExoPlayer.Builder(context)
@@ -129,6 +132,14 @@ class VodPlayerViewModel @Inject constructor(
                     )
                     .build(),
             )
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
     }
 

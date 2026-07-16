@@ -124,6 +124,23 @@ fun VodPlayerScreen(
             .onPreviewKeyEvent { event ->
                 if (state.error != null || dialogOpen) return@onPreviewKeyEvent false
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // Dedicated remote media keys act directly, controls visible or not.
+                when (event.key) {
+                    Key.MediaPlayPause, Key.MediaPlay, Key.MediaPause -> {
+                        viewModel.togglePlayPause()
+                        viewModel.showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.MediaFastForward -> {
+                        viewModel.seekBy(+1)
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.MediaRewind -> {
+                        viewModel.seekBy(-1)
+                        return@onPreviewKeyEvent true
+                    }
+                    else -> Unit
+                }
                 if (state.controlsVisible) {
                     viewModel.pokeControls()
                     false
