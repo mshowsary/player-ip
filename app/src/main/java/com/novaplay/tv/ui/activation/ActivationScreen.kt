@@ -130,7 +130,7 @@ fun ActivationScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
-                text = "SECURE DEVICE PAIRING",
+                text = "WELCOME",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
                 letterSpacing = 3.sp,
@@ -143,7 +143,11 @@ fun ActivationScreen(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = "Got a provider? Give them the one-time code below — nothing to type here. Have your own playlist? Use the options further down.",
+                text = if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                    "Have your own playlist? Start right here. Got a provider subscription? Give them the one-time code — nothing to type."
+                } else {
+                    "Give your provider the one-time code below — nothing to type on this device."
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -158,6 +162,11 @@ fun ActivationScreen(
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),
                 ) {
+                    // Personal playlist leads; the provider path stays fully
+                    // visible right below. Managed-only brands skip the first.
+                    if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                        PersonalPlaylistPanel(onAddPersonalPlaylist)
+                    }
                     PairingPanel(
                         state = state,
                         copiedLabel = copiedLabel,
@@ -168,10 +177,6 @@ fun ActivationScreen(
                         primaryActionFocus = primaryActionFocus,
                     )
                     StepsPanel()
-                    // Managed-only brands hide the personal-source path entirely.
-                    if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
-                        PersonalPlaylistPanel(onAddPersonalPlaylist)
-                    }
                 }
             } else {
                 Row(
@@ -183,12 +188,12 @@ fun ActivationScreen(
                 ) {
                     Column(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.weight(0.9f),
+                        modifier = Modifier.weight(1.05f),
                     ) {
-                        StepsPanel()
                         if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
                             PersonalPlaylistPanel(onAddPersonalPlaylist)
                         }
+                        StepsPanel()
                     }
                     PairingPanel(
                         state = state,
@@ -198,7 +203,7 @@ fun ActivationScreen(
                         onPrimaryAction = viewModel::checkNow,
                         onRefreshCode = viewModel::refreshCode,
                         primaryActionFocus = primaryActionFocus,
-                        modifier = Modifier.weight(1.1f),
+                        modifier = Modifier.weight(0.95f),
                     )
                 }
             }
@@ -243,6 +248,12 @@ private fun PairingPanel(
             )
             .padding(20.dp),
     ) {
+        Text(
+            text = "CONNECT A PROVIDER",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 2.sp,
+        )
         Text(
             text = statusTitle(state),
             style = MaterialTheme.typography.titleLarge,
@@ -605,21 +616,29 @@ private fun InstructionRow(
  */
 @Composable
 private fun PersonalPlaylistPanel(onAddPersonalPlaylist: () -> Unit) {
+    val accent = MaterialTheme.colorScheme.primary
     Column(
         verticalArrangement = Arrangement.spacedBy(10.dp),
         modifier = Modifier
             .fillMaxWidth()
             .background(
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+                Brush.linearGradient(
+                    listOf(
+                        accent.copy(alpha = 0.16f),
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
+                    ),
+                ),
                 MaterialTheme.shapes.medium,
             )
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.border.copy(alpha = 0.45f),
-                MaterialTheme.shapes.medium,
-            )
+            .border(1.5.dp, accent.copy(alpha = 0.55f), MaterialTheme.shapes.medium)
             .padding(16.dp),
     ) {
+        Text(
+            text = "USE MY OWN PLAYLIST",
+            style = MaterialTheme.typography.labelLarge,
+            color = accent,
+            letterSpacing = 2.sp,
+        )
         Text(text = "Have your own playlist?", style = MaterialTheme.typography.titleMedium)
         Text(
             text = "No provider needed. Type it on your phone (easiest) or enter it here with the remote.",
