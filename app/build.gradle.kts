@@ -335,6 +335,8 @@ dependencies {
     implementation(libs.paging.compose)
 
     implementation(libs.coil.compose)
+    // QR rendering for pairing and phone-entry codes; core encoder only, no camera.
+    implementation(libs.zxing.core)
 
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)

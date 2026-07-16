@@ -41,13 +41,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.repo.PlaylistDraft
+import com.novaplay.tv.data.repo.PortalPairingSession
 import com.novaplay.tv.ui.components.AdaptiveFormField
 import com.novaplay.tv.ui.components.EmptyState
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.NovaDialog
+import com.novaplay.tv.ui.components.QrImage
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
@@ -70,6 +74,7 @@ fun AdaptivePlaylistsScreen(
     val activeId by viewModel.activeId.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val phoneEntry by viewModel.phoneEntry.collectAsStateWithLifecycle()
     val isTv = isTvDevice()
     val compact = isCompactWidth()
 
@@ -109,6 +114,7 @@ fun AdaptivePlaylistsScreen(
                 )
             },
             onRefreshPortal = viewModel::refreshFromPortal,
+            onPhoneEntry = if (viewModel.phoneEntryAvailable) viewModel::startPhoneEntry else null,
         )
         Spacer(Modifier.height(18.dp))
 
@@ -171,6 +177,10 @@ fun AdaptivePlaylistsScreen(
             onTest = viewModel::test,
             onSave = viewModel::save,
         )
+    }
+
+    phoneEntry?.let { session ->
+        PhoneEntryDialog(session = session, onCancel = viewModel::cancelPhoneEntry)
     }
 
     actionsFor?.let { playlist ->
@@ -238,6 +248,7 @@ private fun PlaylistHeader(
     onAdd: () -> Unit,
     onImport: () -> Unit,
     onRefreshPortal: () -> Unit,
+    onPhoneEntry: (() -> Unit)? = null,
 ) {
     if (compact) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -253,6 +264,13 @@ private fun PlaylistHeader(
                 prominent = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            onPhoneEntry?.let { start ->
+                NovaButton(
+                    text = "Add from your phone",
+                    onClick = { if (!busy) start() },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                 NovaButton(
                     text = "Import M3U",
@@ -282,6 +300,9 @@ private fun PlaylistHeader(
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 NovaButton(text = "Add playlist", onClick = { if (!busy) onAdd() }, prominent = true)
+                onPhoneEntry?.let { start ->
+                    NovaButton(text = "Add from your phone", onClick = { if (!busy) start() })
+                }
                 NovaButton(text = "Import M3U", onClick = { if (!busy) onImport() })
                 NovaButton(text = "Refresh portal", onClick = { if (!busy) onRefreshPortal() })
             }
@@ -664,3 +685,46 @@ private fun formatDate(epochMs: Long): String =
 // Locale-aware date + time, e.g. "Mar 4, 18:32" — used for the last-sync label.
 private fun formatDateTime(epochMs: Long): String =
     SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(epochMs))
+
+/**
+ * Phone-entry panel: the viewer scans the QR (or opens the address and types
+ * the code) and enters the playlist on their phone — never with the remote.
+ * The dialog closes by itself the moment the playlist arrives.
+ */
+@Composable
+private fun PhoneEntryDialog(
+    session: PortalPairingSession,
+    onCancel: () -> Unit,
+) {
+    NovaDialog(title = "Add from your phone", onDismiss = onCancel) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(
+                text = "Scan with your phone camera and type your playlist there.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            QrImage(content = session.verificationUri, size = 168.dp)
+            Text(
+                text = session.userCode,
+                style = MaterialTheme.typography.headlineMedium,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                text = "No camera? Open ${session.verificationUri.substringBefore("?")} and enter the code.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Text(
+                text = "Waiting for your playlist…",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            NovaButton(text = "Cancel", onClick = onCancel)
+        }
+    }
+}
