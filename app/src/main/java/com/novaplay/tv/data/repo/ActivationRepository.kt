@@ -119,6 +119,7 @@ class ActivationRepository @Inject constructor(
         db.withTransaction {
             for (dto in dtos) {
                 val existing = dao.getByPortalId(dto.id)
+                val epgUrl = dto.epgUrl?.takeUnless { it.isBlank() }
                 val plaintext = if (existing == null) {
                     Playlist(
                         portalId = dto.id,
@@ -128,6 +129,8 @@ class ActivationRepository @Inject constructor(
                         username = dto.username,
                         password = dto.password,
                         url = dto.url,
+                        epgUrl = epgUrl,
+                        lockedByPortal = dto.protected,
                     )
                 } else {
                     existing.copy(
@@ -137,6 +140,8 @@ class ActivationRepository @Inject constructor(
                         username = dto.username,
                         password = dto.password,
                         url = dto.url,
+                        epgUrl = epgUrl,
+                        lockedByPortal = dto.protected,
                     )
                 }
                 val sealed = playlistSecrets.seal(plaintext)

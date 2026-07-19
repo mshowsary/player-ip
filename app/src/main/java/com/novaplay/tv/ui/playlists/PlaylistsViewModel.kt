@@ -250,6 +250,11 @@ class PlaylistsViewModel @Inject constructor(
      * when it was the last playlist, so the UI can route back to activation.
      */
     fun remove(playlist: Playlist) {
+        if (playlist.lockedByPortal) {
+            // Fail closed even if a locked card's Remove ever becomes reachable.
+            showMessage("This playlist is PIN-protected on your portal — unlock it there first")
+            return
+        }
         viewModelScope.launch {
             val remaining = contentRepository.deletePlaylist(playlist.id)
             if (remaining == 0) {

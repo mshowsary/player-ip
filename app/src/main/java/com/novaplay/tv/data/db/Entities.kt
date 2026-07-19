@@ -30,6 +30,9 @@ data class Playlist(
     // other credential fields because guide URLs can embed provider tokens.
     // Xtream playlists build their xmltv.php URL at runtime and leave this null.
     val epgUrl: String? = null,
+    // True when the portal marked this managed playlist PIN-protected: the TV
+    // may play it but must not remove it — only the portal (with the PIN) can.
+    val lockedByPortal: Boolean = false,
     val isActive: Boolean = false,
     val expiryEpochSec: Long? = null,
     val maxConnections: Int? = null,
