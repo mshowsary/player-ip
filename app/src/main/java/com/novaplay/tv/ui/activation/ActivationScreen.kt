@@ -48,9 +48,7 @@ import androidx.tv.material3.Icon
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
-import com.novaplay.tv.core.PortalEndpointPolicy
 import com.novaplay.tv.ui.components.QrImage
-import com.novaplay.tv.ui.playlists.PhoneEntryLaunch
 import com.novaplay.tv.R
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
@@ -144,7 +142,7 @@ fun ActivationScreen(
             Spacer(Modifier.height(10.dp))
             Text(
                 text = if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
-                    "Have your own playlist? Start right here. Got a provider subscription? Give them the one-time code — nothing to type."
+                    "Add your playlist from your phone or computer with the MAC Address and Device Key below — or type it here."
                 } else {
                     "Give your provider the one-time code below — nothing to type on this device."
                 },
@@ -155,7 +153,52 @@ fun ActivationScreen(
             )
             Spacer(Modifier.height(26.dp))
 
-            if (compact) {
+            if (BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                // IBO-model setup: the identity pair is the whole story. The
+                // buried provider-pairing panel remains only for managed-only
+                // white-label builds (the else branch below).
+                val identityViewModel: PlayerIdentityViewModel = hiltViewModel()
+                val identity by identityViewModel.identity.collectAsStateWithLifecycle()
+                val license by identityViewModel.license.collectAsStateWithLifecycle()
+                if (compact) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 560.dp),
+                    ) {
+                        IdentityPanel(
+                            identity = identity,
+                            license = license,
+                            onCheckNow = viewModel::checkNow,
+                            primaryActionFocus = primaryActionFocus,
+                        )
+                        PersonalPlaylistPanel(onAddPersonalPlaylist)
+                    }
+                } else {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        verticalAlignment = Alignment.Top,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 980.dp),
+                    ) {
+                        IdentityPanel(
+                            identity = identity,
+                            license = license,
+                            onCheckNow = viewModel::checkNow,
+                            primaryActionFocus = primaryActionFocus,
+                            modifier = Modifier.weight(1.15f),
+                        )
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.weight(0.85f),
+                        ) {
+                            PersonalPlaylistPanel(onAddPersonalPlaylist)
+                        }
+                    }
+                }
+            } else if (compact) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     modifier = Modifier
@@ -639,31 +682,111 @@ private fun PersonalPlaylistPanel(onAddPersonalPlaylist: () -> Unit) {
             color = accent,
             letterSpacing = 2.sp,
         )
-        Text(text = "Have your own playlist?", style = MaterialTheme.typography.titleMedium)
+        Text(text = "Prefer the remote?", style = MaterialTheme.typography.titleMedium)
         Text(
-            text = "No provider needed. Type it on your phone (easiest) or enter it here with the remote.",
+            text = "Type your Xtream or M3U playlist directly on this device.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        val phoneEntryReachable = PortalEndpointPolicy
-            .assess(BuildConfig.PORTAL_BASE_URL, BuildConfig.DEBUG)
-            .let { it.configured && it.transportAllowed } && !BuildConfig.MOCK_ACTIVATION
-        if (phoneEntryReachable) {
-            NovaButton(
-                text = "Add from your phone",
-                onClick = {
-                    // Jumps straight to the phone-entry code — no menu digging.
-                    PhoneEntryLaunch.requested = true
-                    onAddPersonalPlaylist()
-                },
-                prominent = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
         NovaButton(
             text = "Enter it on this device",
             onClick = onAddPersonalPlaylist,
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * The market-standard identity card: pseudo MAC Address + Device Key (the
+ * owner's portal login), QR straight to the login page, and the live trial
+ * or license state — the whole IBO-style story on one panel.
+ */
+@Composable
+private fun IdentityPanel(
+    identity: PlayerIdentity,
+    license: com.novaplay.tv.data.repo.LicenseInfo?,
+    onCheckNow: () -> Unit,
+    primaryActionFocus: FocusRequester,
+    modifier: Modifier = Modifier,
+) {
+    val accents = com.novaplay.tv.ui.theme.LocalNovaAccents.current
+    val portalBase = BuildConfig.PORTAL_BASE_URL.trimEnd('/')
+    val loginUrl = "$portalBase/login?mac=${identity.mac}"
+    Column(
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = modifier
+            .fillMaxWidth()
+            .background(
+                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                RoundedCornerShape(22.dp),
+            )
+            .border(1.5.dp, accents.gradient, RoundedCornerShape(22.dp))
+            .padding(20.dp),
+    ) {
+        Text(
+            text = "YOUR PLAYER ID",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            letterSpacing = 2.sp,
+        )
+        license?.let {
+            Text(
+                text = when (it.status) {
+                    "trial" -> "Free trial — ${it.trialDaysLeft} day(s) left"
+                    "trial_expired" -> "Trial ended — activate to continue"
+                    "licensed" -> "Lifetime license active"
+                    "revoked" -> "License moved to another device"
+                    else -> it.status
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IdentityValueRow(label = "MAC Address", value = identity.mac)
+        IdentityValueRow(label = "Device Key", value = identity.deviceKey)
+        if (identity.mac.isNotBlank()) {
+            QrImage(content = loginUrl, size = 148.dp)
+            Text(
+                text = "Scan to add and manage your playlists — or visit",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = "$portalBase/login",
+                style = MaterialTheme.typography.bodyMedium,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        NovaButton(
+            text = "I added my playlist — check now",
+            onClick = onCheckNow,
+            prominent = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .focusRequester(primaryActionFocus),
+        )
+    }
+}
+
+@Composable
+private fun IdentityValueRow(label: String, value: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = value.ifBlank { "…" },
+            style = MaterialTheme.typography.titleLarge,
+            fontFamily = FontFamily.Monospace,
+            letterSpacing = 1.sp,
         )
     }
 }

@@ -206,6 +206,9 @@ data class RegisterPlayerRequest(
     @SerialName("device_id") val deviceId: String,
     @SerialName("device_name") val deviceName: String,
     val platform: String = "android",
+    // The identity pair every screen and portal shows: pseudo MAC + key.
+    val mac: String? = null,
+    @SerialName("device_key") val deviceKey: String? = null,
 )
 
 /** License state; device_secret is present only in the registration response. */
