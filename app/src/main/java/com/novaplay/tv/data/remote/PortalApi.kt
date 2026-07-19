@@ -23,6 +23,9 @@ data class PortalPlaylistDto(
     val username: String? = null,
     val password: String? = null,
     val url: String? = null,
+    @SerialName("epg_url") val epgUrl: String? = null,
+    // PIN-protected on the portal: the TV must refuse to remove it.
+    val protected: Boolean = false,
 )
 
 /**
@@ -209,6 +212,8 @@ data class RegisterPlayerRequest(
     // The identity pair every screen and portal shows: pseudo MAC + key.
     val mac: String? = null,
     @SerialName("device_key") val deviceKey: String? = null,
+    // White-label brand slug of this build, for the portal's player dropdown.
+    val brand: String = "novaplay",
 )
 
 /** License state; device_secret is present only in the registration response. */

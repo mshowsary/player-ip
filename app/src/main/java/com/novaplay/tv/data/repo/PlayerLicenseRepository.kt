@@ -87,6 +87,7 @@ class PlayerLicenseRepository @Inject constructor(
                         .joinToString(" ")
                         .ifBlank { "Android device" }
                         .take(80),
+                    brand = BuildConfig.BRAND_SLUG,
                     // Portal adopts the pair the TV already displays, so the
                     // owner's login matches their screen exactly.
                     mac = identity.mac,

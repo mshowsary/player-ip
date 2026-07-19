@@ -27,7 +27,7 @@ import androidx.room.RoomDatabase
         MovieFts::class,
         SeriesFts::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class NovaDatabase : RoomDatabase() {

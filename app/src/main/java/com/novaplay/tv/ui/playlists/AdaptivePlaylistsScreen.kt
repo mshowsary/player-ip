@@ -373,7 +373,16 @@ private fun TouchPlaylistCard(
             if (!active) NovaButton(text = "Use", onClick = { if (!busy) onSetActive() })
             NovaButton(text = if (busy) "Working…" else "Sync", onClick = { if (!busy) onSync() })
             if (personal) NovaButton(text = "Edit", onClick = { if (!busy) onEdit() })
-            NovaButton(text = "Remove", onClick = { if (!busy) onRemove() })
+            if (!playlist.lockedByPortal) {
+                NovaButton(text = "Remove", onClick = { if (!busy) onRemove() })
+            }
+        }
+        if (playlist.lockedByPortal) {
+            Text(
+                text = "PIN-protected on your portal — it can only be removed there",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -515,7 +524,15 @@ private fun TvPlaylistActions(
             }
             NovaButton(text = "Synchronize now", onClick = onSync, modifier = Modifier.fillMaxWidth())
             if (personal) NovaButton(text = "Edit", onClick = onEdit, modifier = Modifier.fillMaxWidth())
-            NovaButton(text = "Remove", onClick = onRemove, modifier = Modifier.fillMaxWidth())
+            if (playlist.lockedByPortal) {
+                Text(
+                    text = "PIN-protected on your portal — it can only be removed there",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                NovaButton(text = "Remove", onClick = onRemove, modifier = Modifier.fillMaxWidth())
+            }
         }
     }
 }

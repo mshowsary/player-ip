@@ -103,6 +103,10 @@ object AppModule {
     fun database(@ApplicationContext context: Context): NovaDatabase =
         Room.databaseBuilder(context, NovaDatabase::class.java, "novaplay.db")
             .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-            .addMigrations(DatabaseMigrations.MIGRATION_2_3, DatabaseMigrations.MIGRATION_3_4)
+            .addMigrations(
+                DatabaseMigrations.MIGRATION_2_3,
+                DatabaseMigrations.MIGRATION_3_4,
+                DatabaseMigrations.MIGRATION_4_5,
+            )
             .build()
 }
