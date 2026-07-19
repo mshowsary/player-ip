@@ -111,7 +111,7 @@ class SettingsViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.Eagerly, UiModePreference.AUTO)
 
     val homeLayout: StateFlow<HomeLayout> = prefs.homeLayout
-        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.HERO)
 
     val accentTheme: StateFlow<AccentTheme> = prefs.accentTheme
         .stateIn(viewModelScope, SharingStarted.Eagerly, AccentTheme.BRAND)
