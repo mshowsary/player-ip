@@ -224,7 +224,7 @@ class AppPreferences @Inject constructor(
     }
 
     val homeLayout: Flow<HomeLayout> = context.dataStore.data
-        .map { it[Keys.HOME_LAYOUT].toEnum(HomeLayout.CLASSIC) }
+        .map { it[Keys.HOME_LAYOUT].toEnum(HomeLayout.HERO) }
         .distinctUntilChanged()
 
     val accentTheme: Flow<AccentTheme> = context.dataStore.data

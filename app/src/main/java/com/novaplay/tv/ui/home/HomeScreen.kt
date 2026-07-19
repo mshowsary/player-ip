@@ -314,6 +314,8 @@ private fun HeroHub(
     val hero = cards.firstOrNull() ?: return
     val rest = cards.drop(1)
     val inset = if (isTv) 10.dp else 0.dp
+    // TV viewing distance wants larger targets; phones keep the tight rhythm.
+    val sectionHeight = if (isTv) 96.dp else 84.dp
     // Side-by-side needs real width for the card labels: only expanded
     // windows (TVs, large tablets) qualify — landscape phones stack, otherwise
     // the right-hand pair column truncates names to their first letters.
@@ -333,10 +335,11 @@ private fun HeroHub(
         if (stacked) {
             HeroCard(
                 card = hero,
+                large = isTv,
                 modifier = Modifier
                     .padding(inset)
                     .fillMaxWidth()
-                    .height(150.dp)
+                    .height(if (isTv) 196.dp else 150.dp)
                     .then(heroFocus),
             )
             rest.chunked(2).forEach { pair ->
@@ -344,6 +347,7 @@ private fun HeroHub(
                     pair.forEach { card ->
                         SectionCardCompact(
                             card = card,
+                            height = sectionHeight,
                             modifier = Modifier
                                 .padding(inset)
                                 .weight(1f),
@@ -356,12 +360,13 @@ private fun HeroHub(
             Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                 HeroCard(
                     card = hero,
+                    large = isTv,
                     modifier = Modifier
                         .padding(inset)
                         .weight(1.25f)
                         .height(
                             // Matches the two stacked compact cards beside it.
-                            (2 * 84 + 12).dp + inset * 2,
+                            sectionHeight * 2 + 12.dp + inset * 2,
                         )
                         .then(heroFocus),
                 )
@@ -374,6 +379,7 @@ private fun HeroHub(
                             pair.forEach { card ->
                                 SectionCardCompact(
                                     card = card,
+                                    height = sectionHeight,
                                     modifier = Modifier
                                         .padding(inset)
                                         .weight(1f),
@@ -392,12 +398,14 @@ private fun HeroHub(
             title = "Continue watching",
             channels = recentChannels,
             inset = inset,
+            tv = isTv,
             onPlayChannel = onPlayChannel,
         )
         ChannelRail(
             title = "Bookmarks",
             channels = bookmarkedChannels,
             inset = inset,
+            tv = isTv,
             onPlayChannel = onPlayChannel,
         )
     }
@@ -409,11 +417,12 @@ private fun HeroHub(
 private fun SectionCardCompact(
     card: HomeCard,
     modifier: Modifier = Modifier,
+    height: Dp = 84.dp,
 ) {
     val label = stringResource(card.labelRes)
     NovaClickable(
         onClick = card.onClick,
-        modifier = modifier.height(84.dp),
+        modifier = modifier.height(height),
         shape = RoundedCornerShape(18.dp),
         focusedScale = 1.04f,
         accessibilityLabel = label,
@@ -455,6 +464,7 @@ private fun SectionCardCompact(
 private fun HeroCard(
     card: HomeCard,
     modifier: Modifier = Modifier,
+    large: Boolean = false,
 ) {
     val label = stringResource(card.labelRes)
     val accents = LocalNovaAccents.current
@@ -488,19 +498,23 @@ private fun HeroCard(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = if (large) {
+                        MaterialTheme.typography.headlineLarge
+                    } else {
+                        MaterialTheme.typography.headlineMedium
+                    },
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(10.dp))
                 Box(
                     modifier = Modifier
-                        .size(width = 46.dp, height = 4.dp)
+                        .size(width = if (large) 58.dp else 46.dp, height = 4.dp)
                         .background(accents.gradient, RoundedCornerShape(2.dp)),
                 )
             }
             Box(
                 modifier = Modifier
-                    .size(84.dp)
+                    .size(if (large) 96.dp else 84.dp)
                     .border(1.5.dp, accents.gradient, CircleShape)
                     .background(accents.accent.copy(alpha = 0.10f), CircleShape),
                 contentAlignment = Alignment.Center,
@@ -509,7 +523,7 @@ private fun HeroCard(
                     imageVector = card.icon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(40.dp),
+                    modifier = Modifier.size(if (large) 46.dp else 40.dp),
                 )
             }
         }
@@ -522,13 +536,21 @@ private fun ChannelRail(
     title: String,
     channels: List<LiveChannel>,
     inset: Dp,
+    tv: Boolean,
     onPlayChannel: (Long) -> Unit,
 ) {
     if (channels.isEmpty()) return
+    val tileWidth = if (tv) 142.dp else 124.dp
+    val tileHeight = if (tv) 106.dp else 96.dp
+    val logoBox = if (tv) 52.dp else 46.dp
     Column(modifier = Modifier.padding(top = 6.dp)) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium,
+            style = if (tv) {
+                MaterialTheme.typography.titleLarge
+            } else {
+                MaterialTheme.typography.titleMedium
+            },
             modifier = Modifier.padding(start = inset, bottom = 10.dp),
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -537,7 +559,7 @@ private fun ChannelRail(
                     onClick = { onPlayChannel(channel.id) },
                     modifier = Modifier
                         .padding(inset)
-                        .size(width = 124.dp, height = 96.dp),
+                        .size(width = tileWidth, height = tileHeight),
                     shape = RoundedCornerShape(14.dp),
                     focusedScale = 1.06f,
                     accessibilityLabel = channel.name,
@@ -548,7 +570,7 @@ private fun ChannelRail(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(46.dp)
+                                .size(logoBox)
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant),
                             contentAlignment = Alignment.Center,
@@ -557,7 +579,7 @@ private fun ChannelRail(
                                 model = channel.logoUrl,
                                 contentDescription = null,
                                 modifier = Modifier
-                                    .size(40.dp)
+                                    .size(logoBox - 6.dp)
                                     .clip(RoundedCornerShape(8.dp)),
                             )
                         }

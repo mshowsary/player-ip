@@ -44,7 +44,7 @@ class HomeViewModel @Inject constructor(
 
     /** Selected hub arrangement; restyles the grid live when changed in Settings. */
     val homeLayout: StateFlow<HomeLayout> = prefs.homeLayout
-        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.CLASSIC)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, HomeLayout.HERO)
 
     /** Recently watched channels for the hub rail; empty until something was played. */
     @OptIn(ExperimentalCoroutinesApi::class)
