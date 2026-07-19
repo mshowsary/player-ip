@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +66,8 @@ fun CompactCategorySelector(
     onSelectCategory: (Long?) -> Unit,
     onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    lockedIds: Set<Long> = emptySet(),
+    onLongPressCategory: ((Long) -> Unit)? = null,
 ) {
     if (!shouldUseCategoryPicker(categories.size)) {
         CategoryChipsRow(
@@ -74,6 +77,8 @@ fun CompactCategorySelector(
             onSelectCategory = onSelectCategory,
             onOpenSearch = onOpenSearch,
             modifier = modifier,
+            lockedIds = lockedIds,
+            onLongPressCategory = onLongPressCategory,
         )
         return
     }
@@ -182,6 +187,13 @@ fun CompactCategorySelector(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                if (onLongPressCategory != null) {
+                    Text(
+                        text = "Hold OK on a category to lock or unlock it",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (filteredCategories.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -219,6 +231,8 @@ fun CompactCategorySelector(
                                 } else {
                                     Modifier
                                 },
+                                locked = id in lockedIds,
+                                onLongClick = onLongPressCategory?.let { toggle -> { toggle(id) } },
                             )
                         }
                     }
@@ -345,9 +359,12 @@ private fun CategoryPickerRow(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    locked: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
 ) {
     NovaClickable(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = modifier
             .fillMaxWidth()
             .height(52.dp)
@@ -386,7 +403,17 @@ private fun CategoryPickerRow(
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
+            if (locked) {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Locked category",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
     }
 }

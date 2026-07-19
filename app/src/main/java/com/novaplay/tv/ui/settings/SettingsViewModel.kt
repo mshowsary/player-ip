@@ -32,6 +32,7 @@ import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.PlayerLicenseRepository
 import com.novaplay.tv.ui.player.PlaybackMetrics
 import com.novaplay.tv.data.repo.ManagedAccessRepository
+import com.novaplay.tv.data.repo.ParentalControlsRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.data.repo.SyncTrigger
@@ -47,6 +48,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -77,6 +79,7 @@ class SettingsViewModel @Inject constructor(
     private val diagnosticsRepository: AppDiagnosticsRepository,
     private val updateRepository: UpdateRepository,
     private val playerLicenseRepository: PlayerLicenseRepository,
+    private val parentalRepository: ParentalControlsRepository,
     deviceIdentity: DeviceIdentity,
     playbackMetrics: PlaybackMetrics,
     @ApplicationScope private val appScope: CoroutineScope,
@@ -304,4 +307,27 @@ class SettingsViewModel @Inject constructor(
     fun setDebugManagedPolicy(preset: DebugManagedPolicyPreset) {
         if (BuildConfig.DEBUG) managedAccessRepository.setDebugPreset(preset)
     }
+
+    // --- Parental controls ---
+
+    /** Whether a parental PIN exists on this device. */
+    val parentalPinConfigured: StateFlow<Boolean> = parentalRepository.pinConfigured
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /** Whether the parental session is currently unlocked. */
+    val parentalSessionUnlocked: StateFlow<Boolean> = parentalRepository.sessionUnlocked
+
+    /** How many categories are locked, across Live, Movies and Series. */
+    val parentalLockedCount: StateFlow<Int> = parentalRepository.lockedKeys
+        .map { it.size }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    /** Checks the current PIN without unlocking (change-PIN flow, step one). */
+    suspend fun checkParentalPin(pin: String): Boolean = parentalRepository.checkPin(pin)
+
+    /** Sets or replaces the parental PIN; false for non-4-digit input. */
+    suspend fun setParentalPin(pin: String): Boolean = parentalRepository.setPin(pin)
+
+    /** Ends the unlocked parental session; locked categories hide again at once. */
+    fun relockParental() = parentalRepository.relock()
 }

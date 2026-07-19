@@ -6,6 +6,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.novaplay.tv.ui.components.CatalogGridScreen
 import com.novaplay.tv.ui.components.PosterCard
+import com.novaplay.tv.ui.components.rememberParentalGate
 
 /**
  * Movie catalog: category tabs, search, and a poster grid delegated to
@@ -19,6 +20,13 @@ fun MoviesScreen(
 ) {
     val categories by viewModel.categories.collectAsStateWithLifecycle()
     val bookmarkedIds by viewModel.bookmarkedIds.collectAsStateWithLifecycle()
+    val parental by viewModel.parental.collectAsStateWithLifecycle()
+    val gate = rememberParentalGate(
+        state = parental,
+        onUnlock = viewModel::unlockParental,
+        onSetPin = viewModel::setParentalPin,
+        onToggleLock = viewModel::toggleCategoryLock,
+    )
 
     CatalogGridScreen(
         title = "Movies",
@@ -27,6 +35,8 @@ fun MoviesScreen(
         searchPlaceholder = "Search movies…",
         emptyMessage = "No movies in this category yet",
         itemId = { it.id },
+        lockedIds = parental.lockedIds,
+        gate = gate,
     ) { movie ->
         PosterCard(
             title = movie.name,

@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
@@ -183,6 +184,8 @@ class AppPreferences @Inject constructor(
         val LAST_SYNC_SERIES = intPreferencesKey("last_sync_series")
         val LAST_SYNC_EPG = intPreferencesKey("last_sync_epg")
         val LAST_SYNC_ERROR = stringPreferencesKey("last_sync_error")
+        val PARENTAL_PIN = stringPreferencesKey("parental_pin")
+        val PARENTAL_LOCKED = stringSetPreferencesKey("parental_locked_categories")
     }
 
     // By-name enum lookup falling back to the default, so a stored value that no longer
@@ -365,6 +368,26 @@ class AppPreferences @Inject constructor(
             prefs[Keys.LAST_SYNC_EPG] = summary.epgProgrammes
             summary.error.storeOrRemove(prefs, Keys.LAST_SYNC_ERROR)
         }
+    }
+
+    /** Encoded parental PIN (ParentalPinPolicy format), or null when none is set. */
+    val parentalPin: Flow<String?> = context.dataStore.data
+        .map { it[Keys.PARENTAL_PIN] }
+        .distinctUntilChanged()
+
+    /** Stores the already-encoded parental PIN; encoding/validation is the caller's job. */
+    suspend fun setParentalPin(encoded: String) {
+        context.dataStore.edit { it[Keys.PARENTAL_PIN] = encoded }
+    }
+
+    /** Lock keys (ParentalPinPolicy.lockKey format) of every locked category. */
+    val parentalLockedKeys: Flow<Set<String>> = context.dataStore.data
+        .map { it[Keys.PARENTAL_LOCKED] ?: emptySet() }
+        .distinctUntilChanged()
+
+    /** Replaces the whole locked-category set atomically. */
+    suspend fun setParentalLockedKeys(keys: Set<String>) {
+        context.dataStore.edit { it[Keys.PARENTAL_LOCKED] = keys }
     }
 
     // Blank strings are removed rather than stored, keeping "absent" distinct from "".

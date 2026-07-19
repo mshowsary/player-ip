@@ -50,8 +50,21 @@ fun <T : Any> CatalogGridScreen(
     searchPlaceholder: String,
     emptyMessage: String,
     itemId: (T) -> Long,
+    lockedIds: Set<Long> = emptySet(),
+    gate: ParentalGateState? = null,
     itemContent: @Composable (T) -> Unit,
 ) {
+    // Locked categories open only through the parental gate; the long-press
+    // route toggles locks (creating the PIN in place the first time).
+    val selectCategory: (Long?) -> Unit = { id ->
+        if (gate != null) {
+            gate.open(id) { browser.selectCategory(id) }
+        } else {
+            browser.selectCategory(id)
+        }
+    }
+    val longPressCategory: ((Long) -> Unit)? = gate?.let { g -> { id -> g.toggleLock(id) } }
+
     val selectedCategoryId by browser.selectedCategoryId.collectAsStateWithLifecycle()
     val searchActive by browser.searchActive.collectAsStateWithLifecycle()
     val searchQuery by browser.searchQuery.collectAsStateWithLifecycle()
@@ -145,8 +158,10 @@ fun <T : Any> CatalogGridScreen(
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
                 searchActive = searchActive,
-                onSelectCategory = browser::selectCategory,
+                onSelectCategory = selectCategory,
                 onOpenSearch = browser::openSearch,
+                lockedIds = lockedIds,
+                onLongPressCategory = longPressCategory,
             )
             Spacer(Modifier.height(12.dp))
             gridPane()
@@ -161,16 +176,20 @@ fun <T : Any> CatalogGridScreen(
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
                 searchActive = searchActive,
-                onSelectCategory = browser::selectCategory,
+                onSelectCategory = selectCategory,
                 onOpenSearch = browser::openSearch,
                 modifier = Modifier
                     .fillMaxHeight()
                     .width(layout.categoryRailWidthDp.dp),
+                lockedIds = lockedIds,
+                onLongPressCategory = longPressCategory,
             )
             Spacer(Modifier.width(24.dp))
             gridPane()
         }
     }
+
+    gate?.let { ParentalGateDialogs(it) }
 }
 
 // Shimmer placeholder shown while the first page loads: derives the column
