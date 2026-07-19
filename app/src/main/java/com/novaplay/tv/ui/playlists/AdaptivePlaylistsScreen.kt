@@ -46,7 +46,6 @@ import androidx.compose.ui.text.style.TextAlign
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.repo.PlaylistDraft
-import com.novaplay.tv.data.repo.PortalPairingSession
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.AdaptiveFormField
 import com.novaplay.tv.ui.components.EmptyState
@@ -79,13 +78,13 @@ fun AdaptivePlaylistsScreen(
     val busy by viewModel.busy.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val syncModalVisible by viewModel.syncModalVisible.collectAsStateWithLifecycle()
-    val phoneEntry by viewModel.phoneEntry.collectAsStateWithLifecycle()
     val isTv = isTvDevice()
     val compact = isCompactWidth()
 
     var actionsFor by remember { mutableStateOf<Playlist?>(null) }
     var confirmRemove by remember { mutableStateOf<Playlist?>(null) }
     var editorDraft by remember { mutableStateOf<PlaylistDraft?>(null) }
+    var showManageFromPhone by remember { mutableStateOf(false) }
     val firstRowFocus = remember { FocusRequester() }
     val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importM3u)
@@ -102,13 +101,6 @@ fun AdaptivePlaylistsScreen(
     }
     LaunchedEffect(isTv, playlists.isNotEmpty()) {
         if (isTv && playlists.isNotEmpty()) runCatching { firstRowFocus.requestFocus() }
-    }
-    // First-run hand-off: "Add from your phone" on the setup screen opens the
-    // phone-entry panel immediately instead of landing on a menu.
-    LaunchedEffect(Unit) {
-        if (PhoneEntryLaunch.consume() && viewModel.phoneEntryAvailable) {
-            viewModel.startPhoneEntry()
-        }
     }
 
     Column(
@@ -127,7 +119,11 @@ fun AdaptivePlaylistsScreen(
                 )
             },
             onRefreshPortal = viewModel::refreshFromPortal,
-            onPhoneEntry = if (viewModel.phoneEntryAvailable) viewModel::startPhoneEntry else null,
+            onPhoneEntry = if (viewModel.phoneEntryAvailable) {
+                { showManageFromPhone = true }
+            } else {
+                null
+            },
         )
         Spacer(Modifier.height(18.dp))
 
@@ -192,8 +188,8 @@ fun AdaptivePlaylistsScreen(
         )
     }
 
-    phoneEntry?.let { session ->
-        PhoneEntryDialog(session = session, onCancel = viewModel::cancelPhoneEntry)
+    if (showManageFromPhone) {
+        ManageFromPhoneDialog(onDismiss = { showManageFromPhone = false })
     }
 
     // Live progress for the sync running behind `busy` (save & sync, import,
@@ -722,44 +718,55 @@ private fun formatDateTime(epochMs: Long): String =
     SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(epochMs))
 
 /**
- * Phone-entry panel: the viewer scans the QR (or opens the address and types
- * the code) and enters the playlist on their phone — never with the remote.
- * The dialog closes by itself the moment the playlist arrives.
+ * One identity everywhere: managing playlists from a phone means signing in
+ * at the portal with the MAC Address + Device Key this dialog shows. The
+ * QR lands on /login with the MAC prefilled; saved playlists arrive on the
+ * next refresh.
  */
 @Composable
-private fun PhoneEntryDialog(
-    session: PortalPairingSession,
-    onCancel: () -> Unit,
+private fun ManageFromPhoneDialog(
+    onDismiss: () -> Unit,
+    identityViewModel: com.novaplay.tv.ui.activation.PlayerIdentityViewModel = hiltViewModel(),
 ) {
-    NovaDialog(title = "Add from your phone", onDismiss = onCancel) {
+    val identity by identityViewModel.identity.collectAsStateWithLifecycle()
+    val portalBase = BuildConfig.PORTAL_BASE_URL.trimEnd('/')
+    NovaDialog(title = "Manage from your phone", onDismiss = onDismiss) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
-                text = "Scan with your phone camera and type your playlist there.",
+                text = "Sign in on your phone with this MAC Address and Device Key to add or edit playlists.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            QrImage(content = session.verificationUri, size = 168.dp)
             Text(
-                text = session.userCode,
-                style = MaterialTheme.typography.headlineMedium,
+                text = identity.mac,
+                style = MaterialTheme.typography.headlineSmall,
                 fontFamily = FontFamily.Monospace,
             )
             Text(
-                text = "No camera? Open ${session.verificationUri.substringBefore("?")} and enter the code.",
+                text = "Device Key  ${identity.deviceKey}",
+                style = MaterialTheme.typography.titleMedium,
+                fontFamily = FontFamily.Monospace,
+            )
+            if (identity.mac.isNotBlank()) {
+                QrImage(content = "$portalBase/login?mac=${identity.mac}", size = 156.dp)
+            }
+            Text(
+                text = "$portalBase/login",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                fontFamily = FontFamily.Monospace,
+            )
+            Text(
+                text = "Saved playlists arrive automatically — or use Refresh portal.",
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            Text(
-                text = "Waiting for your playlist…",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            NovaButton(text = "Cancel", onClick = onCancel)
+            NovaButton(text = "Done", onClick = onDismiss)
         }
     }
 }

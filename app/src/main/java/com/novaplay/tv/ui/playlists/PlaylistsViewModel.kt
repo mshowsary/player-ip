@@ -7,11 +7,10 @@ import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.repo.ActivationCheck
 import com.novaplay.tv.data.repo.ActivationRepository
 import com.novaplay.tv.data.repo.ContentRepository
-import com.novaplay.tv.data.repo.DeliveryPoll
-import com.novaplay.tv.data.repo.PlaylistDeliveryRepository
+import com.novaplay.tv.BuildConfig
+import com.novaplay.tv.core.PortalEndpointPolicy
 import com.novaplay.tv.data.repo.PlaylistDraft
 import com.novaplay.tv.data.repo.PlaylistManager
-import com.novaplay.tv.data.repo.PortalPairingSession
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.data.repo.SyncTrigger
@@ -47,7 +46,6 @@ class PlaylistsViewModel @Inject constructor(
     private val activationRepository: ActivationRepository,
     private val syncRepository: SyncRepository,
     private val playlistManager: PlaylistManager,
-    private val deliveryRepository: PlaylistDeliveryRepository,
     @ApplicationScope private val appScope: CoroutineScope,
 ) : ViewModel() {
 
@@ -95,60 +93,11 @@ class PlaylistsViewModel @Inject constructor(
     private val _playlistReady = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val playlistReady: SharedFlow<Unit> = _playlistReady.asSharedFlow()
 
-    /** Live phone-entry session (code + QR) or null when the panel is closed. */
-    private val _phoneEntry = MutableStateFlow<PortalPairingSession?>(null)
-    val phoneEntry: StateFlow<PortalPairingSession?> = _phoneEntry.asStateFlow()
-
-    /** Whether phone entry can be offered at all (portal configured). */
-    val phoneEntryAvailable: Boolean get() = deliveryRepository.available
-
-    private var phoneEntryJob: kotlinx.coroutines.Job? = null
-
-    /**
-     * Starts a phone-entry session and polls it until the playlist arrives,
-     * the code expires, or the user cancels. The delivered draft goes through
-     * the same save path as a hand-typed one.
-     */
-    fun startPhoneEntry() {
-        if (phoneEntryJob?.isActive == true) return
-        phoneEntryJob = viewModelScope.launch {
-            val session = deliveryRepository.createSession().getOrElse { error ->
-                showMessage(error.message ?: "Phone entry is unavailable right now")
-                return@launch
-            }
-            _phoneEntry.value = session
-            var interval = session.intervalSeconds
-            while (_phoneEntry.value != null) {
-                delay(interval * 1_000L)
-                when (val poll = deliveryRepository.poll(session)) {
-                    is DeliveryPoll.Pending -> interval = poll.retryAfterSeconds
-                    is DeliveryPoll.SlowDown -> interval = poll.retryAfterSeconds
-                    is DeliveryPoll.Ready -> {
-                        _phoneEntry.value = null
-                        save(poll.draft)
-                        return@launch
-                    }
-                    DeliveryPoll.Expired -> {
-                        _phoneEntry.value = null
-                        showMessage("The code expired — start again when you are ready")
-                        return@launch
-                    }
-                    is DeliveryPoll.Failure -> {
-                        _phoneEntry.value = null
-                        showMessage(poll.message)
-                        return@launch
-                    }
-                }
-            }
-        }
-    }
-
-    /** Closes the phone-entry panel; the code dies with its expiry. */
-    fun cancelPhoneEntry() {
-        phoneEntryJob?.cancel()
-        phoneEntryJob = null
-        _phoneEntry.value = null
-    }
+    /** Whether the manage-from-phone panel can be offered (portal reachable). */
+    val phoneEntryAvailable: Boolean
+        get() = !BuildConfig.MOCK_ACTIVATION && PortalEndpointPolicy
+            .assess(BuildConfig.PORTAL_BASE_URL, BuildConfig.DEBUG)
+            .let { it.configured && it.transportAllowed }
 
     /** True for user-created playlists (editable); false for portal-managed assignments. */
     fun isPersonal(playlist: Playlist): Boolean = playlistManager.isPersonal(playlist)
@@ -167,6 +116,7 @@ class PlaylistsViewModel @Inject constructor(
         }
         showMessage("“${playlist.name}” is now active")
     }
+
 
     /**
      * Runs a full sync of the playlist, reporting the outcome and emitting [playlistReady]
