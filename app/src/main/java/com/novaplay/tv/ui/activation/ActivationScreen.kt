@@ -735,7 +735,12 @@ private fun IdentityPanel(
                 text = when (it.status) {
                     "trial" -> "Free trial — ${it.trialDaysLeft} day(s) left"
                     "trial_expired" -> "Trial ended — activate to continue"
-                    "licensed" -> "Lifetime license active"
+                    "licensed" -> if (it.trialDaysLeft > 0) {
+                        "Licensed — ${it.trialDaysLeft} day(s) remaining"
+                    } else {
+                        "Lifetime license active"
+                    }
+                    "expired" -> "Activation expired — renew to continue"
                     "revoked" -> "License moved to another device"
                     else -> it.status
                 },
