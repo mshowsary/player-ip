@@ -135,13 +135,17 @@ fun PolishedSettingsScreen(
                 modifier = Modifier.weight(1f),
             ) {
                 item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
+                if (!BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                    // Provider-managed brands only; self-service builds show
+                    // their trial/license state in This device instead.
                 item {
-                    ManagedAccessPanel(
-                        policy = managedAccess,
-                        refreshMessage = managedRefreshMessage,
-                        onRefresh = viewModel::refreshManagedAccess,
-                        onDebugPreset = viewModel::setDebugManagedPolicy,
-                    )
+                        ManagedAccessPanel(
+                            policy = managedAccess,
+                            refreshMessage = managedRefreshMessage,
+                            onRefresh = viewModel::refreshManagedAccess,
+                            onDebugPreset = viewModel::setDebugManagedPolicy,
+                        )
+                    }
                 }
                 item {
                     PlaybackPanel(
@@ -189,13 +193,17 @@ fun PolishedSettingsScreen(
                         .fillMaxHeight(),
                 ) {
                     item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
+                    if (!BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
+                        // Provider-managed brands only; self-service builds show
+                        // their trial/license state in This device instead.
                     item {
-                        ManagedAccessPanel(
-                            policy = managedAccess,
-                            refreshMessage = managedRefreshMessage,
-                            onRefresh = viewModel::refreshManagedAccess,
-                            onDebugPreset = viewModel::setDebugManagedPolicy,
-                        )
+                            ManagedAccessPanel(
+                                policy = managedAccess,
+                                refreshMessage = managedRefreshMessage,
+                                onRefresh = viewModel::refreshManagedAccess,
+                                onDebugPreset = viewModel::setDebugManagedPolicy,
+                            )
+                        }
                     }
                     item {
                         PlaybackPanel(

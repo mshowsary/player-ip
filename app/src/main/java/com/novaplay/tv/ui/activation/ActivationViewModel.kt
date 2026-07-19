@@ -113,6 +113,15 @@ class ActivationViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Identity-screen action: fetches playlists for this device's MAC + key
+     * right now, regardless of any pairing-session phase. This is the "I
+     * added my playlist on the website - check now" button.
+     */
+    fun checkPlaylistsNow() {
+        checkAssignedPlaylists(manual = true)
+    }
+
     /** Discards the current session (including the stored one) and creates a fresh pairing code. */
     fun refreshCode() {
         viewModelScope.launch { createPairingSession(clearStoredSession = true) }

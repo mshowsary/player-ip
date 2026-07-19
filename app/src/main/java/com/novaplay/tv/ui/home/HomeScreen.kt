@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -429,35 +430,52 @@ private fun SectionCardCompact(
         focusedScale = 1.04f,
         accessibilityLabel = label,
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(horizontal = if (narrow) 12.dp else 16.dp),
-        ) {
-            // Beside the hero, half a column is tight: shrink the icon and
-            // let the label wrap — the name always wins over the decoration.
-            Box(
-                modifier = Modifier
-                    .size(if (narrow) 34.dp else 44.dp)
-                    .border(1.5.dp, LocalNovaAccents.current.gradient, CircleShape)
-                    .background(LocalNovaAccents.current.accent.copy(alpha = 0.08f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = card.icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(if (narrow) 18.dp else 22.dp),
-                )
-            }
-            Spacer(Modifier.width(if (narrow) 10.dp else 14.dp))
+        if (narrow) {
+            // Beside the hero, half a column is too tight for icon + word:
+            // the full name on one centered line beats decorated truncation
+            // ("Playlist / s" is worse than no icon).
             Text(
                 text = label,
                 style = MaterialTheme.typography.titleMedium,
-                maxLines = 2,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 10.dp),
             )
+        } else {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .align(Alignment.CenterStart)
+                    .padding(horizontal = 16.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .border(1.5.dp, LocalNovaAccents.current.gradient, CircleShape)
+                        .background(
+                            LocalNovaAccents.current.accent.copy(alpha = 0.08f),
+                            CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = card.icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Spacer(Modifier.width(14.dp))
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
