@@ -88,6 +88,14 @@ now"** on the box → channels should appear within seconds, then:
    in-player channel list, search in it, bookmark a channel.
 6. **Settings → This device**: MAC, Device Key and "Player license:
    Free trial — N day(s) left" should all show.
+7. **Parental control**: in Live, open the categories and **hold OK** on
+   one — you are asked to create a 4-digit PIN; the category gets a
+   padlock. Force-stop and reopen the app, then confirm that category's
+   channels are gone from "All", from search, and that CH+/- and typing
+   their number skip them. Selecting the locked category asks the PIN;
+   after entering it everything returns. Settings → Parental controls
+   has "Lock now" and Change PIN. Hold OK again (PIN) to unlock the
+   category for good.
 
 ## 3. Tour B — the owner web portal
 
@@ -101,6 +109,10 @@ On the Ubuntu machine's browser:
    the entry hides its details and Edit/Remove demand the PIN.
 4. Back to the box → "check now" → the playlist installs (Tour A step 4).
 5. Try **Edit**, **Remove**, **Sign out / sign in**.
+6. **TV lock**: with a PIN-protected playlist installed, open the box's
+   Playlists screen and try to remove it — there must be no Remove
+   button, only "PIN-protected on your portal". Unprotect it on /my
+   (PIN), "Refresh portal" on the box, and Remove reappears.
 
 ## 4. Tour C — the reseller panel
 
@@ -118,18 +130,39 @@ docs at `http://localhost:8000/docs`, all in dev mode):
 Then in a **private browser window**: `http://localhost:8000/portal/login`
 → sign in as the seller → you land on **/reseller**:
 
-1. **Check a player**: enter the TV's MAC → status card must show the
-   device, trial state, expiry, `******` for the Device Key (never the
-   real key) and empty "activated by".
-2. **Activate 1 year (1 credit)** → status flips to licensed, balance
-   drops, the box's Settings shows the license on next open.
-3. **Add playlist** to that MAC (the fake server again) → box picks it
-   up on "check now" / Playlists → Refresh portal.
-4. **Switch MAC**: `pm clear` the app (it becomes a brand-new device with
+1. **Check a player**: pick the player in the dropdown, enter the TV's
+   MAC → status card must show name, device model, app, trial state,
+   expiry, `******` for the Device Key (never the real key), empty
+   "activated by", and a **Last seen** time with the box's IP.
+2. **Name the device** ("Tester box — salon"), Save → the name shows in
+   the card and in "My activated players", and must survive a later
+   `pm clear` + re-register of the app.
+3. **Activate 1 year (1 credit)** → status flips to licensed with the
+   right expiry date (not "Lifetime"!), balance drops, the box's
+   Settings shows "Licensed — N day(s) remaining".
+4. **Add playlist** to that MAC (the fake server again) → box picks it
+   up on "check now" / Playlists → Refresh portal. Add a second one with
+   **Protect this playlist** + a PIN: the box must refuse to remove that
+   one (Tour B step 6), and in the panel's playlists table its Remove
+   asks the PIN while the unprotected one just confirms.
+5. **Reset playlists** wipes them all; the customer keeps the license.
+6. **Switch MAC**: `pm clear` the app (it becomes a brand-new device with
    a NEW MAC — that's by design), read the new MAC off the TV, then move
    the license from the old MAC to the new one → old shows revoked, new
    shows licensed.
-5. Sanity: activating with 0 credits left must refuse politely.
+7. Sanity: activating with 0 credits left must refuse politely.
+
+## 4b. Tour D — owner extras (downloads & notices)
+
+Back in the owner's browser window on `http://localhost:8000/portal`:
+
+1. **Player downloads**: publish brand `novaplay` with any https link and
+   a version → the public page `http://localhost:8000/download` (no login
+   needed — try a private window) lists it with a Download APK button;
+   the reseller panel's "Download APK" button opens the same page.
+2. **Offers & notifications**: publish a notice ("Lifetime promo — 3
+   credits") → it appears at the top of the reseller panel on reload.
+   Archive it → gone from the reseller, still listed (archived) for you.
 
 ## 5. What to report
 
@@ -140,6 +173,9 @@ Then in a **private browser window**: `http://localhost:8000/portal/login`
 - Any error message that contains a server address, credential or token —
   that is a bug by definition, report it immediately.
 - Anything in the two portals a non-technical seller would stumble on.
+
+The portal got a visual refresh — after `git pull`, hard-refresh the
+browser (Ctrl+F5) once so the old stylesheet cache is dropped.
 
 Portal logs live in the uvicorn terminal; app-side:
 `adb logcat -s SyncRepository` for sync, and the full logcat for crashes.
