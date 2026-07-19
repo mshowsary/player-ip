@@ -29,6 +29,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -74,9 +75,11 @@ import com.novaplay.tv.data.repo.ManagedFeature
 import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.data.repo.UpdateCheckState
 import com.novaplay.tv.ui.components.NovaButton
+import com.novaplay.tv.ui.components.PinDialog
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
+import kotlinx.coroutines.launch
 
 /**
  * Settings choices deliberately do not scale or glow. A stable two-pixel focus
@@ -100,6 +103,9 @@ fun PolishedSettingsScreen(
     val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
     val managedRefreshMessage by viewModel.managedRefreshMessage.collectAsStateWithLifecycle()
     val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+    val parentalPinConfigured by viewModel.parentalPinConfigured.collectAsStateWithLifecycle()
+    val parentalSessionUnlocked by viewModel.parentalSessionUnlocked.collectAsStateWithLifecycle()
+    val parentalLockedCount by viewModel.parentalLockedCount.collectAsStateWithLifecycle()
     val firstFocus = remember { FocusRequester() }
     val compact = isCompactWidth()
     val isTv = isTvDevice()
@@ -154,6 +160,16 @@ fun PolishedSettingsScreen(
                         showGestureChoice = !isTv,
                         onSelect = viewModel::setLiveFormat,
                         onSetGestures = viewModel::setPlayerGesturesEnabled,
+                    )
+                }
+                item {
+                    ParentalPanel(
+                        pinConfigured = parentalPinConfigured,
+                        sessionUnlocked = parentalSessionUnlocked,
+                        lockedCount = parentalLockedCount,
+                        onCheckPin = viewModel::checkParentalPin,
+                        onSetPin = viewModel::setParentalPin,
+                        onRelock = viewModel::relockParental,
                     )
                 }
                 item {
@@ -243,6 +259,16 @@ fun PolishedSettingsScreen(
                         .fillMaxHeight(),
                 ) {
                     item {
+                        ParentalPanel(
+                            pinConfigured = parentalPinConfigured,
+                            sessionUnlocked = parentalSessionUnlocked,
+                            lockedCount = parentalLockedCount,
+                            onCheckPin = viewModel::checkParentalPin,
+                            onSetPin = viewModel::setParentalPin,
+                            onRelock = viewModel::relockParental,
+                        )
+                    }
+                    item {
                         SubtitlePanel(
                             subtitleStyle,
                             viewModel::setSubtitleSize,
@@ -254,6 +280,94 @@ fun PolishedSettingsScreen(
                 }
             }
         }
+    }
+}
+
+// Which step of the parental PIN dialog flow is open.
+private enum class PinFlow { NONE, VERIFY_CURRENT, ENTER_NEW }
+
+/**
+ * Parental-control management: PIN status, set/change PIN (changing verifies
+ * the current PIN first) and a session re-lock. Locking itself happens where
+ * the categories live — long-press in Live, Movies or Series.
+ */
+@Composable
+private fun ParentalPanel(
+    pinConfigured: Boolean,
+    sessionUnlocked: Boolean,
+    lockedCount: Int,
+    onCheckPin: suspend (String) -> Boolean,
+    onSetPin: suspend (String) -> Boolean,
+    onRelock: () -> Unit,
+) {
+    var flow by remember { mutableStateOf(PinFlow.NONE) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+
+    SettingsPanel(
+        title = "Parental controls",
+        description = "Lock categories behind a 4-digit PIN — hold OK (long-press) on any " +
+            "category in Live, Movies or Series. Locked categories and their content stay " +
+            "hidden from browsing, search, zapping and Home until the PIN is entered.",
+    ) {
+        DeviceInfoRow("PIN", if (pinConfigured) "Set" else "Not set")
+        DeviceInfoRow("Locked categories", lockedCount.toString())
+        if (pinConfigured) {
+            DeviceInfoRow("Right now", if (sessionUnlocked) "Unlocked for this session" else "Locked")
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            NovaButton(
+                text = if (pinConfigured) "Change PIN" else "Set PIN",
+                onClick = {
+                    error = null
+                    flow = if (pinConfigured) PinFlow.VERIFY_CURRENT else PinFlow.ENTER_NEW
+                },
+            )
+            if (pinConfigured && sessionUnlocked) {
+                NovaButton(text = "Lock now", onClick = onRelock)
+            }
+        }
+    }
+
+    when (flow) {
+        PinFlow.NONE -> Unit
+        PinFlow.VERIFY_CURRENT -> PinDialog(
+            title = "Change PIN",
+            subtitle = "Enter your current PIN first.",
+            confirmLabel = "Continue",
+            maskInput = true,
+            error = error,
+            onSubmit = { pin ->
+                scope.launch {
+                    if (onCheckPin(pin)) {
+                        error = null
+                        flow = PinFlow.ENTER_NEW
+                    } else {
+                        error = "Wrong PIN — try again"
+                    }
+                }
+            },
+            onDismiss = { flow = PinFlow.NONE },
+        )
+        PinFlow.ENTER_NEW -> PinDialog(
+            title = if (pinConfigured) "New PIN" else "Set parental PIN",
+            subtitle = "Choose a 4-digit PIN. It will be needed to open or unlock locked categories.",
+            confirmLabel = "Save PIN",
+            maskInput = false,
+            error = error,
+            onSubmit = { pin ->
+                scope.launch {
+                    if (onSetPin(pin)) {
+                        error = null
+                        flow = PinFlow.NONE
+                    } else {
+                        error = "The PIN must be exactly 4 digits"
+                    }
+                }
+            },
+            onDismiss = { flow = PinFlow.NONE },
+        )
     }
 }
 

@@ -72,6 +72,11 @@ interface PlaylistDao {
  * Live TV catalogue: category lists, paged channel windows, zapping lookups and
  * FTS search. Channel queries follow the indexed (playlistId, categoryId, num)
  * browse order so Paging 3 windows never scan.
+ *
+ * Every content query takes a :hidden set of parental-locked category ids and
+ * excludes their rows (uncategorized rows are never locked). Callers pass an
+ * empty set when nothing is locked or the session is unlocked — SQLite treats
+ * NOT IN () as always true.
  */
 @Dao
 interface LiveDao {
@@ -79,38 +84,47 @@ interface LiveDao {
     @Query("SELECT * FROM live_categories WHERE playlistId = :playlistId ORDER BY sortOrder")
     fun categories(playlistId: Long): Flow<List<LiveCategory>>
 
-    /** Paged channels of one category in (num, id) browse order. */
-    @Query("SELECT * FROM live_channels WHERE playlistId = :playlistId AND categoryId = :categoryId ORDER BY num, id")
-    fun channelsByCategory(playlistId: Long, categoryId: Long): PagingSource<Int, LiveChannel>
+    /** Paged channels of one category in (num, id) browse order; a locked category pages empty. */
+    @Query(
+        """SELECT * FROM live_channels WHERE playlistId = :playlistId AND categoryId = :categoryId
+           AND categoryId NOT IN (:hidden) ORDER BY num, id""",
+    )
+    fun channelsByCategory(playlistId: Long, categoryId: Long, hidden: Set<Long>): PagingSource<Int, LiveChannel>
 
     /** Paged channels across every category ("All"), same (num, id) order. */
-    @Query("SELECT * FROM live_channels WHERE playlistId = :playlistId ORDER BY num, id")
-    fun allChannels(playlistId: Long): PagingSource<Int, LiveChannel>
+    @Query(
+        """SELECT * FROM live_channels WHERE playlistId = :playlistId
+           AND (categoryId IS NULL OR categoryId NOT IN (:hidden)) ORDER BY num, id""",
+    )
+    fun allChannels(playlistId: Long, hidden: Set<Long>): PagingSource<Int, LiveChannel>
 
     /** Paged bookmarked channels, newest bookmark first. Joins on the stable streamId so bookmarks survive re-syncs. */
     @Query(
         """SELECT c.* FROM live_channels c
            JOIN bookmarks b ON b.playlistId = c.playlistId AND b.mediaType = 'live' AND b.remoteId = c.streamId
-           WHERE c.playlistId = :playlistId ORDER BY b.createdAt DESC, c.id""",
+           WHERE c.playlistId = :playlistId AND (c.categoryId IS NULL OR c.categoryId NOT IN (:hidden))
+           ORDER BY b.createdAt DESC, c.id""",
     )
-    fun bookmarkedChannels(playlistId: Long): PagingSource<Int, LiveChannel>
+    fun bookmarkedChannels(playlistId: Long, hidden: Set<Long>): PagingSource<Int, LiveChannel>
 
     /** Paged recently-watched channels, most recently viewed first. */
     @Query(
         """SELECT c.* FROM live_channels c
            JOIN recent_views r ON r.playlistId = c.playlistId AND r.mediaType = 'live' AND r.remoteId = c.streamId
-           WHERE c.playlistId = :playlistId ORDER BY r.viewedAt DESC, c.id""",
+           WHERE c.playlistId = :playlistId AND (c.categoryId IS NULL OR c.categoryId NOT IN (:hidden))
+           ORDER BY r.viewedAt DESC, c.id""",
     )
-    fun recentChannels(playlistId: Long): PagingSource<Int, LiveChannel>
+    fun recentChannels(playlistId: Long, hidden: Set<Long>): PagingSource<Int, LiveChannel>
 
     /** Paged FTS search over channel names in browse order. ftsQuery must be a MATCH expression with prefix tokens ("spo*"), never a LIKE pattern. */
     @Query(
         """SELECT c.* FROM live_channels c
            JOIN live_channel_fts ON c.id = live_channel_fts.rowid
            WHERE live_channel_fts MATCH :ftsQuery AND c.playlistId = :playlistId
+             AND (c.categoryId IS NULL OR c.categoryId NOT IN (:hidden))
            ORDER BY c.num, c.id""",
     )
-    fun search(playlistId: Long, ftsQuery: String): PagingSource<Int, LiveChannel>
+    fun search(playlistId: Long, ftsQuery: String, hidden: Set<Long>): PagingSource<Int, LiveChannel>
 
     /** Loads one channel by local row id. */
     @Query("SELECT * FROM live_channels WHERE id = :id")
@@ -121,57 +135,64 @@ interface LiveDao {
     suspend fun categoryById(id: Long): LiveCategory?
 
     // Zapping: (num, id) is the browse order; the OR filter keeps one query for
-    // both "All" (:categoryId null) and a specific category.
+    // both "All" (:categoryId null) and a specific category. Locked categories
+    // are skipped so channel up/down never lands inside them.
     @Query(
         """SELECT * FROM live_channels
            WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND (categoryId IS NULL OR categoryId NOT IN (:hidden))
              AND (num > :num OR (num = :num AND id > :id))
            ORDER BY num, id LIMIT 1""",
     )
-    suspend fun nextChannel(playlistId: Long, categoryId: Long?, num: Int, id: Long): LiveChannel?
+    suspend fun nextChannel(playlistId: Long, categoryId: Long?, num: Int, id: Long, hidden: Set<Long>): LiveChannel?
 
     /** Zapping counterpart of [nextChannel]: the channel just before (num, id) in browse order, or null at the start. */
     @Query(
         """SELECT * FROM live_channels
            WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND (categoryId IS NULL OR categoryId NOT IN (:hidden))
              AND (num < :num OR (num = :num AND id < :id))
            ORDER BY num DESC, id DESC LIMIT 1""",
     )
-    suspend fun prevChannel(playlistId: Long, categoryId: Long?, num: Int, id: Long): LiveChannel?
+    suspend fun prevChannel(playlistId: Long, categoryId: Long?, num: Int, id: Long, hidden: Set<Long>): LiveChannel?
 
     /** First channel in browse order — the wrap-around target when zapping past the last channel. */
     @Query(
         """SELECT * FROM live_channels
            WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND (categoryId IS NULL OR categoryId NOT IN (:hidden))
            ORDER BY num, id LIMIT 1""",
     )
-    suspend fun firstChannel(playlistId: Long, categoryId: Long?): LiveChannel?
+    suspend fun firstChannel(playlistId: Long, categoryId: Long?, hidden: Set<Long>): LiveChannel?
 
     /** Last channel in browse order — the wrap-around target when zapping back from the first channel. */
     @Query(
         """SELECT * FROM live_channels
            WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND (categoryId IS NULL OR categoryId NOT IN (:hidden))
            ORDER BY num DESC, id DESC LIMIT 1""",
     )
-    suspend fun lastChannel(playlistId: Long, categoryId: Long?): LiveChannel?
+    suspend fun lastChannel(playlistId: Long, categoryId: Long?, hidden: Set<Long>): LiveChannel?
 
     // In-player digit zap: the first channel at or after :num in browse order,
     // falling back to the last channel when the number is beyond the lineup.
     @Query(
         """SELECT * FROM live_channels
            WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND (categoryId IS NULL OR categoryId NOT IN (:hidden))
              AND num >= :num
            ORDER BY num, id LIMIT 1""",
     )
-    suspend fun channelAtOrAfterNum(playlistId: Long, categoryId: Long?, num: Int): LiveChannel?
+    suspend fun channelAtOrAfterNum(playlistId: Long, categoryId: Long?, num: Int, hidden: Set<Long>): LiveChannel?
 
     // Digit-jump: list index of the first channel whose num >= :num.
     @Query(
         """SELECT COUNT(*) FROM live_channels
            WHERE playlistId = :playlistId AND (:categoryId IS NULL OR categoryId = :categoryId)
+             AND (categoryId IS NULL OR categoryId NOT IN (:hidden))
              AND num < :num""",
     )
-    suspend fun positionOfNum(playlistId: Long, categoryId: Long?, num: Int): Int
+    suspend fun positionOfNum(playlistId: Long, categoryId: Long?, num: Int, hidden: Set<Long>): Int
 
     /** Total channel count for one playlist (sync stats and empty-state checks). */
     @Query("SELECT COUNT(*) FROM live_channels WHERE playlistId = :playlistId")
@@ -182,17 +203,19 @@ interface LiveDao {
     @Query(
         """SELECT c.* FROM live_channels c
            JOIN recent_views r ON r.playlistId = c.playlistId AND r.mediaType = 'live' AND r.remoteId = c.streamId
-           WHERE c.playlistId = :playlistId ORDER BY r.viewedAt DESC, c.id LIMIT :limit""",
+           WHERE c.playlistId = :playlistId AND (c.categoryId IS NULL OR c.categoryId NOT IN (:hidden))
+           ORDER BY r.viewedAt DESC, c.id LIMIT :limit""",
     )
-    fun recentChannelsRail(playlistId: Long, limit: Int): Flow<List<LiveChannel>>
+    fun recentChannelsRail(playlistId: Long, limit: Int, hidden: Set<Long>): Flow<List<LiveChannel>>
 
     /** Bookmarked channels for the Home rail, newest bookmark first. */
     @Query(
         """SELECT c.* FROM live_channels c
            JOIN bookmarks b ON b.playlistId = c.playlistId AND b.mediaType = 'live' AND b.remoteId = c.streamId
-           WHERE c.playlistId = :playlistId ORDER BY b.createdAt DESC, c.id LIMIT :limit""",
+           WHERE c.playlistId = :playlistId AND (c.categoryId IS NULL OR c.categoryId NOT IN (:hidden))
+           ORDER BY b.createdAt DESC, c.id LIMIT :limit""",
     )
-    fun bookmarkedChannelsRail(playlistId: Long, limit: Int): Flow<List<LiveChannel>>
+    fun bookmarkedChannelsRail(playlistId: Long, limit: Int, hidden: Set<Long>): Flow<List<LiveChannel>>
 
     /** Distinct guide keys of one playlist; guide installs skip programmes for channels not in this set. */
     @Query(
@@ -225,38 +248,47 @@ interface MovieDao {
     @Query("SELECT * FROM vod_categories WHERE playlistId = :playlistId ORDER BY sortOrder")
     fun categories(playlistId: Long): Flow<List<VodCategory>>
 
-    /** Paged movies of one category, alphabetical. */
-    @Query("SELECT * FROM movies WHERE playlistId = :playlistId AND categoryId = :categoryId ORDER BY name, id")
-    fun moviesByCategory(playlistId: Long, categoryId: Long): PagingSource<Int, Movie>
+    /** Paged movies of one category, alphabetical; a locked category pages empty. */
+    @Query(
+        """SELECT * FROM movies WHERE playlistId = :playlistId AND categoryId = :categoryId
+           AND categoryId NOT IN (:hidden) ORDER BY name, id""",
+    )
+    fun moviesByCategory(playlistId: Long, categoryId: Long, hidden: Set<Long>): PagingSource<Int, Movie>
 
     /** Paged movies across every category ("All"), alphabetical. */
-    @Query("SELECT * FROM movies WHERE playlistId = :playlistId ORDER BY name, id")
-    fun allMovies(playlistId: Long): PagingSource<Int, Movie>
+    @Query(
+        """SELECT * FROM movies WHERE playlistId = :playlistId
+           AND (categoryId IS NULL OR categoryId NOT IN (:hidden)) ORDER BY name, id""",
+    )
+    fun allMovies(playlistId: Long, hidden: Set<Long>): PagingSource<Int, Movie>
 
     /** Paged bookmarked movies, newest bookmark first; joined on the stable streamId so re-syncs keep them. */
     @Query(
         """SELECT m.* FROM movies m
            JOIN bookmarks b ON b.playlistId = m.playlistId AND b.mediaType = 'movie' AND b.remoteId = m.streamId
-           WHERE m.playlistId = :playlistId ORDER BY b.createdAt DESC, m.id""",
+           WHERE m.playlistId = :playlistId AND (m.categoryId IS NULL OR m.categoryId NOT IN (:hidden))
+           ORDER BY b.createdAt DESC, m.id""",
     )
-    fun bookmarkedMovies(playlistId: Long): PagingSource<Int, Movie>
+    fun bookmarkedMovies(playlistId: Long, hidden: Set<Long>): PagingSource<Int, Movie>
 
     /** Paged recently-watched movies, most recently viewed first. */
     @Query(
         """SELECT m.* FROM movies m
            JOIN recent_views r ON r.playlistId = m.playlistId AND r.mediaType = 'movie' AND r.remoteId = m.streamId
-           WHERE m.playlistId = :playlistId ORDER BY r.viewedAt DESC, m.id""",
+           WHERE m.playlistId = :playlistId AND (m.categoryId IS NULL OR m.categoryId NOT IN (:hidden))
+           ORDER BY r.viewedAt DESC, m.id""",
     )
-    fun recentMovies(playlistId: Long): PagingSource<Int, Movie>
+    fun recentMovies(playlistId: Long, hidden: Set<Long>): PagingSource<Int, Movie>
 
     /** Paged FTS search over movie names, alphabetical. ftsQuery is a prefix-token MATCH expression, never LIKE. */
     @Query(
         """SELECT m.* FROM movies m
            JOIN movie_fts ON m.id = movie_fts.rowid
            WHERE movie_fts MATCH :ftsQuery AND m.playlistId = :playlistId
+             AND (m.categoryId IS NULL OR m.categoryId NOT IN (:hidden))
            ORDER BY m.name, m.id""",
     )
-    fun search(playlistId: Long, ftsQuery: String): PagingSource<Int, Movie>
+    fun search(playlistId: Long, ftsQuery: String, hidden: Set<Long>): PagingSource<Int, Movie>
 
     /** Loads one movie by local row id. */
     @Query("SELECT * FROM movies WHERE id = :id")
@@ -306,38 +338,47 @@ interface SeriesDao {
     @Query("SELECT * FROM series_categories WHERE playlistId = :playlistId ORDER BY sortOrder")
     fun categories(playlistId: Long): Flow<List<SeriesCategory>>
 
-    /** Paged series of one category, alphabetical. */
-    @Query("SELECT * FROM series WHERE playlistId = :playlistId AND categoryId = :categoryId ORDER BY name, id")
-    fun seriesByCategory(playlistId: Long, categoryId: Long): PagingSource<Int, Series>
+    /** Paged series of one category, alphabetical; a locked category pages empty. */
+    @Query(
+        """SELECT * FROM series WHERE playlistId = :playlistId AND categoryId = :categoryId
+           AND categoryId NOT IN (:hidden) ORDER BY name, id""",
+    )
+    fun seriesByCategory(playlistId: Long, categoryId: Long, hidden: Set<Long>): PagingSource<Int, Series>
 
     /** Paged series across every category ("All"), alphabetical. */
-    @Query("SELECT * FROM series WHERE playlistId = :playlistId ORDER BY name, id")
-    fun allSeries(playlistId: Long): PagingSource<Int, Series>
+    @Query(
+        """SELECT * FROM series WHERE playlistId = :playlistId
+           AND (categoryId IS NULL OR categoryId NOT IN (:hidden)) ORDER BY name, id""",
+    )
+    fun allSeries(playlistId: Long, hidden: Set<Long>): PagingSource<Int, Series>
 
     /** Paged bookmarked series, newest bookmark first; joined on the stable seriesId so re-syncs keep them. */
     @Query(
         """SELECT s.* FROM series s
            JOIN bookmarks b ON b.playlistId = s.playlistId AND b.mediaType = 'series' AND b.remoteId = s.seriesId
-           WHERE s.playlistId = :playlistId ORDER BY b.createdAt DESC, s.id""",
+           WHERE s.playlistId = :playlistId AND (s.categoryId IS NULL OR s.categoryId NOT IN (:hidden))
+           ORDER BY b.createdAt DESC, s.id""",
     )
-    fun bookmarkedSeries(playlistId: Long): PagingSource<Int, Series>
+    fun bookmarkedSeries(playlistId: Long, hidden: Set<Long>): PagingSource<Int, Series>
 
     /** Paged recently-watched series, most recently viewed first. */
     @Query(
         """SELECT s.* FROM series s
            JOIN recent_views r ON r.playlistId = s.playlistId AND r.mediaType = 'series' AND r.remoteId = s.seriesId
-           WHERE s.playlistId = :playlistId ORDER BY r.viewedAt DESC, s.id""",
+           WHERE s.playlistId = :playlistId AND (s.categoryId IS NULL OR s.categoryId NOT IN (:hidden))
+           ORDER BY r.viewedAt DESC, s.id""",
     )
-    fun recentSeries(playlistId: Long): PagingSource<Int, Series>
+    fun recentSeries(playlistId: Long, hidden: Set<Long>): PagingSource<Int, Series>
 
     /** Paged FTS search over series names, alphabetical. ftsQuery is a prefix-token MATCH expression, never LIKE. */
     @Query(
         """SELECT s.* FROM series s
            JOIN series_fts ON s.id = series_fts.rowid
            WHERE series_fts MATCH :ftsQuery AND s.playlistId = :playlistId
+             AND (s.categoryId IS NULL OR s.categoryId NOT IN (:hidden))
            ORDER BY s.name, s.id""",
     )
-    fun search(playlistId: Long, ftsQuery: String): PagingSource<Int, Series>
+    fun search(playlistId: Long, ftsQuery: String, hidden: Set<Long>): PagingSource<Int, Series>
 
     /** Loads one series by local row id. */
     @Query("SELECT * FROM series WHERE id = :id")

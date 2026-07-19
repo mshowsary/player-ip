@@ -12,26 +12,94 @@ import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.db.RecentView
 import com.novaplay.tv.data.db.Series
 import com.novaplay.tv.data.db.WatchProgress
+import com.novaplay.tv.core.ParentalPinPolicy
 import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.epg.EpgNowNextPolicy
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.remote.XtreamClient
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** The three catalogue sections; [key] namespaces parental lock keys per type. */
+enum class CatalogType(val key: String) {
+    LIVE("live"),
+    VOD("vod"),
+    SERIES("series"),
+}
+
 /**
  * Read-side facade over the synced catalogue: paged browsing, search, stream
  * URL resolution, bookmarks/recents and watch progress. All reads come from
  * Room; only the on-demand detail refreshes touch the network.
+ *
+ * Parental locks are enforced here, not in the UI: every pager, search, zap
+ * lookup and Home rail excludes content of locked categories while the
+ * parental session is locked, so a locked category cannot leak through any
+ * entry point.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 @Singleton
 class ContentRepository @Inject constructor(
     private val db: NovaDatabase,
     private val xtream: XtreamClient,
+    private val parental: ParentalControlsRepository,
 ) {
+    // ---- Parental category locks ----
+
+    // (local id, provider category id) pairs per type; the provider id is the
+    // stable half a lock key is built from.
+    private fun categoryRows(type: CatalogType, playlistId: Long): Flow<List<Pair<Long, String>>> =
+        when (type) {
+            CatalogType.LIVE -> db.liveDao().categories(playlistId).map { rows -> rows.map { it.id to it.remoteId } }
+            CatalogType.VOD -> db.movieDao().categories(playlistId).map { rows -> rows.map { it.id to it.remoteId } }
+            CatalogType.SERIES -> db.seriesDao().categories(playlistId).map { rows -> rows.map { it.id to it.remoteId } }
+        }
+
+    private fun matchingIds(
+        rows: List<Pair<Long, String>>,
+        keys: Set<String>,
+        type: CatalogType,
+        playlistId: Long,
+    ): Set<Long> =
+        if (keys.isEmpty()) {
+            emptySet()
+        } else {
+            rows.filter { (_, remoteId) -> ParentalPinPolicy.lockKey(type.key, playlistId, remoteId) in keys }
+                .map { (id, _) -> id }
+                .toSet()
+        }
+
+    /** Locked category local ids for badges — independent of the session unlock. */
+    fun lockedCategoryIds(type: CatalogType, playlistId: Long): Flow<Set<Long>> =
+        combine(categoryRows(type, playlistId), parental.lockedKeys) { rows, locked ->
+            matchingIds(rows, locked, type, playlistId)
+        }.distinctUntilChanged()
+
+    // Category local ids whose content must be hidden right now. Empty while
+    // the session is unlocked, so distinctUntilChanged keeps pagers untouched.
+    private fun hiddenCategoryIds(type: CatalogType, playlistId: Long): Flow<Set<Long>> =
+        combine(categoryRows(type, playlistId), parental.hiddenKeys) { rows, hidden ->
+            matchingIds(rows, hidden, type, playlistId)
+        }.distinctUntilChanged()
+
+    private suspend fun hiddenNow(type: CatalogType, playlistId: Long): Set<Long> =
+        hiddenCategoryIds(type, playlistId).first()
+
+    /** Locks or unlocks one category by its local id; unknown ids are ignored. */
+    suspend fun toggleCategoryLock(type: CatalogType, playlistId: Long, categoryId: Long) {
+        val remoteId = categoryRows(type, playlistId).first()
+            .firstOrNull { (id, _) -> id == categoryId }?.second ?: return
+        parental.toggleLock(ParentalPinPolicy.lockKey(type.key, playlistId, remoteId))
+    }
+
     val activePlaylist: Flow<Playlist?> = db.playlistDao().observeActive()
 
     /** True when the playlist was user-entered (negative portalId); false for
@@ -73,51 +141,65 @@ class ContentRepository @Inject constructor(
      * negative virtual ids map to the bookmarks and recents rails.
      */
     fun channelsPager(playlistId: Long, categoryId: Long?): Flow<PagingData<LiveChannel>> =
-        pager {
-            when (categoryId) {
-                null -> db.liveDao().allChannels(playlistId)
-                CATEGORY_BOOKMARKS -> db.liveDao().bookmarkedChannels(playlistId)
-                CATEGORY_RECENT -> db.liveDao().recentChannels(playlistId)
-                else -> db.liveDao().channelsByCategory(playlistId, categoryId)
+        hiddenCategoryIds(CatalogType.LIVE, playlistId).flatMapLatest { hidden ->
+            pager {
+                when (categoryId) {
+                    null -> db.liveDao().allChannels(playlistId, hidden)
+                    CATEGORY_BOOKMARKS -> db.liveDao().bookmarkedChannels(playlistId, hidden)
+                    CATEGORY_RECENT -> db.liveDao().recentChannels(playlistId, hidden)
+                    else -> db.liveDao().channelsByCategory(playlistId, categoryId, hidden)
+                }
             }
         }
 
     /** Paged FTS search over channels; [query] must be [ftsPrefixQuery] output. */
     fun searchChannelsPager(playlistId: Long, query: String): Flow<PagingData<LiveChannel>> =
-        pager { db.liveDao().search(playlistId, query) }
+        hiddenCategoryIds(CatalogType.LIVE, playlistId).flatMapLatest { hidden ->
+            pager { db.liveDao().search(playlistId, query, hidden) }
+        }
 
     /** Channel lookup by local row id; null if the row was replaced by a sync. */
     suspend fun channelById(id: Long): LiveChannel? = db.liveDao().byId(id)
 
     /** Recently watched channels for the Home rail (bounded, newest first). */
     fun recentChannelsRail(playlistId: Long, limit: Int = 12): Flow<List<LiveChannel>> =
-        db.liveDao().recentChannelsRail(playlistId, limit)
+        hiddenCategoryIds(CatalogType.LIVE, playlistId).flatMapLatest { hidden ->
+            db.liveDao().recentChannelsRail(playlistId, limit, hidden)
+        }
 
     /** Bookmarked channels for the Home rail (bounded, newest first). */
     fun bookmarkedChannelsRail(playlistId: Long, limit: Int = 12): Flow<List<LiveChannel>> =
-        db.liveDao().bookmarkedChannelsRail(playlistId, limit)
+        hiddenCategoryIds(CatalogType.LIVE, playlistId).flatMapLatest { hidden ->
+            db.liveDao().bookmarkedChannelsRail(playlistId, limit, hidden)
+        }
 
     /** Live category lookup by local row id, for restoring rail state. */
     suspend fun liveCategoryById(id: Long) = db.liveDao().categoryById(id)
 
     /** Next channel for zapping within the category (or all); wraps to the first at the end. */
-    suspend fun nextChannel(channel: LiveChannel, categoryId: Long?): LiveChannel? =
-        db.liveDao().nextChannel(channel.playlistId, categoryId, channel.num, channel.id)
-            ?: db.liveDao().firstChannel(channel.playlistId, categoryId)
+    suspend fun nextChannel(channel: LiveChannel, categoryId: Long?): LiveChannel? {
+        val hidden = hiddenNow(CatalogType.LIVE, channel.playlistId)
+        return db.liveDao().nextChannel(channel.playlistId, categoryId, channel.num, channel.id, hidden)
+            ?: db.liveDao().firstChannel(channel.playlistId, categoryId, hidden)
+    }
 
     /** Previous channel for zapping; wraps to the last at the start. */
-    suspend fun prevChannel(channel: LiveChannel, categoryId: Long?): LiveChannel? =
-        db.liveDao().prevChannel(channel.playlistId, categoryId, channel.num, channel.id)
-            ?: db.liveDao().lastChannel(channel.playlistId, categoryId)
+    suspend fun prevChannel(channel: LiveChannel, categoryId: Long?): LiveChannel? {
+        val hidden = hiddenNow(CatalogType.LIVE, channel.playlistId)
+        return db.liveDao().prevChannel(channel.playlistId, categoryId, channel.num, channel.id, hidden)
+            ?: db.liveDao().lastChannel(channel.playlistId, categoryId, hidden)
+    }
 
     /** Zero-based list position of a channel number, used to scroll the grid to it. */
     suspend fun positionOfChannelNum(playlistId: Long, categoryId: Long?, num: Int): Int =
-        db.liveDao().positionOfNum(playlistId, categoryId, num)
+        db.liveDao().positionOfNum(playlistId, categoryId, num, hiddenNow(CatalogType.LIVE, playlistId))
 
     /** In-player digit zap target: the channel at or after [num], or the last channel beyond the lineup. */
-    suspend fun channelAtOrAfterNum(playlistId: Long, categoryId: Long?, num: Int): LiveChannel? =
-        db.liveDao().channelAtOrAfterNum(playlistId, categoryId, num)
-            ?: db.liveDao().lastChannel(playlistId, categoryId)
+    suspend fun channelAtOrAfterNum(playlistId: Long, categoryId: Long?, num: Int): LiveChannel? {
+        val hidden = hiddenNow(CatalogType.LIVE, playlistId)
+        return db.liveDao().channelAtOrAfterNum(playlistId, categoryId, num, hidden)
+            ?: db.liveDao().lastChannel(playlistId, categoryId, hidden)
+    }
 
     // Candidate URLs in retry order for a live channel, honoring the format setting.
     suspend fun liveStreamUrls(channel: LiveChannel, format: LiveFormat): List<String> {
@@ -153,18 +235,22 @@ class ContentRepository @Inject constructor(
 
     /** Paged movie stream; null category is "all", virtual ids select bookmarks/recents. */
     fun moviesPager(playlistId: Long, categoryId: Long?): Flow<PagingData<Movie>> =
-        pager {
-            when (categoryId) {
-                null -> db.movieDao().allMovies(playlistId)
-                CATEGORY_BOOKMARKS -> db.movieDao().bookmarkedMovies(playlistId)
-                CATEGORY_RECENT -> db.movieDao().recentMovies(playlistId)
-                else -> db.movieDao().moviesByCategory(playlistId, categoryId)
+        hiddenCategoryIds(CatalogType.VOD, playlistId).flatMapLatest { hidden ->
+            pager {
+                when (categoryId) {
+                    null -> db.movieDao().allMovies(playlistId, hidden)
+                    CATEGORY_BOOKMARKS -> db.movieDao().bookmarkedMovies(playlistId, hidden)
+                    CATEGORY_RECENT -> db.movieDao().recentMovies(playlistId, hidden)
+                    else -> db.movieDao().moviesByCategory(playlistId, categoryId, hidden)
+                }
             }
         }
 
     /** Paged FTS search over movies; [query] must be [ftsPrefixQuery] output. */
     fun searchMoviesPager(playlistId: Long, query: String): Flow<PagingData<Movie>> =
-        pager { db.movieDao().search(playlistId, query) }
+        hiddenCategoryIds(CatalogType.VOD, playlistId).flatMapLatest { hidden ->
+            pager { db.movieDao().search(playlistId, query, hidden) }
+        }
 
     /** Movie lookup by local row id; null if the row was replaced by a sync. */
     suspend fun movieById(id: Long): Movie? = db.movieDao().byId(id)
@@ -205,18 +291,22 @@ class ContentRepository @Inject constructor(
 
     /** Paged series stream; null category is "all", virtual ids select bookmarks/recents. */
     fun seriesPager(playlistId: Long, categoryId: Long?): Flow<PagingData<Series>> =
-        pager {
-            when (categoryId) {
-                null -> db.seriesDao().allSeries(playlistId)
-                CATEGORY_BOOKMARKS -> db.seriesDao().bookmarkedSeries(playlistId)
-                CATEGORY_RECENT -> db.seriesDao().recentSeries(playlistId)
-                else -> db.seriesDao().seriesByCategory(playlistId, categoryId)
+        hiddenCategoryIds(CatalogType.SERIES, playlistId).flatMapLatest { hidden ->
+            pager {
+                when (categoryId) {
+                    null -> db.seriesDao().allSeries(playlistId, hidden)
+                    CATEGORY_BOOKMARKS -> db.seriesDao().bookmarkedSeries(playlistId, hidden)
+                    CATEGORY_RECENT -> db.seriesDao().recentSeries(playlistId, hidden)
+                    else -> db.seriesDao().seriesByCategory(playlistId, categoryId, hidden)
+                }
             }
         }
 
     /** Paged FTS search over series; [query] must be [ftsPrefixQuery] output. */
     fun searchSeriesPager(playlistId: Long, query: String): Flow<PagingData<Series>> =
-        pager { db.seriesDao().search(playlistId, query) }
+        hiddenCategoryIds(CatalogType.SERIES, playlistId).flatMapLatest { hidden ->
+            pager { db.seriesDao().search(playlistId, query, hidden) }
+        }
 
     /** Series lookup by local row id; null if the row was replaced by a sync. */
     suspend fun seriesById(id: Long): Series? = db.seriesDao().byId(id)

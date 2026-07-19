@@ -56,7 +56,9 @@ import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.repo.ContentRepository
 import com.novaplay.tv.ui.components.EmptyState
 import com.novaplay.tv.ui.components.NovaClickable
+import com.novaplay.tv.ui.components.ParentalGateDialogs
 import com.novaplay.tv.ui.components.ShimmerBox
+import com.novaplay.tv.ui.components.rememberParentalGate
 import com.novaplay.tv.ui.theme.catalogLayoutSpec
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
@@ -82,6 +84,17 @@ fun ResponsiveLiveScreen(
     val channels = viewModel.channels.collectAsLazyPagingItems()
     val channelListState = rememberLazyListState()
     val layout = catalogLayoutSpec()
+
+    val parental by viewModel.parental.collectAsStateWithLifecycle()
+    val gate = rememberParentalGate(
+        state = parental,
+        onUnlock = viewModel::unlockParental,
+        onSetPin = viewModel::setParentalPin,
+        onToggleLock = viewModel::toggleCategoryLock,
+    )
+    val selectCategory: (Long?) -> Unit = { id ->
+        gate.open(id) { viewModel.selectCategory(id) }
+    }
 
     LaunchedEffect(Unit) {
         viewModel.jumpToIndex.collect { index ->
@@ -190,8 +203,10 @@ fun ResponsiveLiveScreen(
                     categories = categories.map { it.id to it.name },
                     selectedCategoryId = selectedCategoryId,
                     searchActive = searchActive,
-                    onSelectCategory = viewModel::selectCategory,
+                    onSelectCategory = selectCategory,
                     onOpenSearch = viewModel::openSearch,
+                    lockedIds = parental.lockedIds,
+                    onLongPressCategory = gate::toggleLock,
                 )
                 Spacer(Modifier.height(12.dp))
                 channelPane()
@@ -202,16 +217,20 @@ fun ResponsiveLiveScreen(
                     categories = categories.map { it.id to it.name },
                     selectedCategoryId = selectedCategoryId,
                     searchActive = searchActive,
-                    onSelectCategory = viewModel::selectCategory,
+                    onSelectCategory = selectCategory,
                     onOpenSearch = viewModel::openSearch,
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(layout.categoryRailWidthDp.dp),
+                    lockedIds = parental.lockedIds,
+                    onLongPressCategory = gate::toggleLock,
                 )
                 Spacer(Modifier.width(24.dp))
                 channelPane()
             }
         }
+
+        ParentalGateDialogs(gate)
 
         if (digitBuffer.isNotEmpty()) {
             Text(

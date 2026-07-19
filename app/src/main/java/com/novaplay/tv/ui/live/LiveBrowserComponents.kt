@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -72,6 +73,8 @@ fun CategoryRail(
     onSelectCategory: (Long?) -> Unit,
     onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    lockedIds: Set<Long> = emptySet(),
+    onLongPressCategory: ((Long) -> Unit)? = null,
 ) {
     // Sensible initial focus exactly once per back-stack entry: returning from
     // a player must restore the previously focused item, not steal focus back.
@@ -150,17 +153,26 @@ fun CategoryRail(
                 name = name,
                 selected = !searchActive && selectedCategoryId == id,
                 onClick = { onSelectCategory(id) },
+                locked = id in lockedIds,
+                onLongClick = onLongPressCategory?.let { toggle -> { toggle(id) } },
             )
         }
     }
 }
 
 // Full-width focusable entry in the category rail; the selected row shows a
-// primary indicator bar at its leading edge.
+// primary indicator bar at its leading edge, a locked one a trailing padlock.
 @Composable
-private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
+private fun CategoryRow(
+    name: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    locked: Boolean = false,
+    onLongClick: (() -> Unit)? = null,
+) {
     NovaClickable(
         onClick = onClick,
+        onLongClick = onLongClick,
         modifier = Modifier
             .fillMaxWidth()
             .height(52.dp),
@@ -175,6 +187,7 @@ private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .align(Alignment.CenterStart)
+                .fillMaxWidth()
                 .padding(horizontal = 16.dp),
         ) {
             if (selected) {
@@ -191,7 +204,17 @@ private fun CategoryRow(name: String, selected: Boolean, onClick: () -> Unit) {
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
             )
+            if (locked) {
+                Spacer(Modifier.width(8.dp))
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Locked category",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(15.dp),
+                )
+            }
         }
     }
 }
@@ -206,6 +229,8 @@ fun CategoryChipsRow(
     onSelectCategory: (Long?) -> Unit,
     onOpenSearch: () -> Unit,
     modifier: Modifier = Modifier,
+    lockedIds: Set<Long> = emptySet(),
+    onLongPressCategory: ((Long) -> Unit)? = null,
 ) {
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -247,8 +272,21 @@ fun CategoryChipsRow(
         items(count = categories.size, key = { categories[it].first }) { index ->
             val (id, name) = categories[index]
             val selected = !searchActive && selectedCategoryId == id
-            CategoryChip(selected = selected, onClick = { onSelectCategory(id) }) {
+            CategoryChip(
+                selected = selected,
+                onClick = { onSelectCategory(id) },
+                onLongClick = onLongPressCategory?.let { toggle -> { toggle(id) } },
+            ) {
                 ChipLabel(text = name, selected = selected)
+                if (id in lockedIds) {
+                    Spacer(Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Locked category",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(13.dp),
+                    )
+                }
             }
         }
     }
@@ -259,10 +297,12 @@ fun CategoryChipsRow(
 private fun CategoryChip(
     selected: Boolean,
     onClick: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
     content: @Composable () -> Unit,
 ) {
     NovaClickable(
         onClick = onClick,
+        onLongClick = onLongClick,
         // Selected chips wear the signature gradient ring.
         modifier = if (selected) {
             Modifier.border(1.dp, LocalNovaAccents.current.gradient, RoundedCornerShape(50))

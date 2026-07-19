@@ -8,7 +8,10 @@ import com.novaplay.tv.data.db.Bookmark
 import com.novaplay.tv.data.db.LiveCategory
 import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.epg.EpgNowNext
+import com.novaplay.tv.data.repo.CatalogType
 import com.novaplay.tv.data.repo.ContentRepository
+import com.novaplay.tv.data.repo.ParentalControlsRepository
+import com.novaplay.tv.ui.components.ParentalUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -51,6 +54,7 @@ private data class BrowseKey(
 @HiltViewModel
 class LiveViewModel @Inject constructor(
     private val contentRepository: ContentRepository,
+    private val parentalRepository: ParentalControlsRepository,
 ) : ViewModel() {
 
     private val playlistId: StateFlow<Long?> = contentRepository.activePlaylist
@@ -98,6 +102,33 @@ class LiveViewModel @Inject constructor(
                 }
             }
             .cachedIn(viewModelScope)
+
+    // --- parental control ---
+
+    /** PIN/lock snapshot for the category surfaces; badges and gating read this. */
+    val parental: StateFlow<ParentalUiState> = combine(
+        parentalRepository.pinConfigured,
+        parentalRepository.sessionUnlocked,
+        playlistId.filterNotNull().flatMapLatest {
+            contentRepository.lockedCategoryIds(CatalogType.LIVE, it)
+        },
+    ) { configured, unlocked, locked ->
+        ParentalUiState(pinConfigured = configured, sessionUnlocked = unlocked, lockedIds = locked)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ParentalUiState())
+
+    /** Verifies the PIN and unlocks the session on success. */
+    suspend fun unlockParental(pin: String): Boolean = parentalRepository.unlock(pin)
+
+    /** Creates the parental PIN (first lock ever); false for non-4-digit input. */
+    suspend fun setParentalPin(pin: String): Boolean = parentalRepository.setPin(pin)
+
+    /** Locks or unlocks one live category; callers gate this behind the PIN. */
+    fun toggleCategoryLock(categoryId: Long) {
+        val pid = playlistId.value ?: return
+        viewModelScope.launch {
+            contentRepository.toggleCategoryLock(CatalogType.LIVE, pid, categoryId)
+        }
+    }
 
     // Bookmarked stream ids for per-row state; toggling updates instantly.
     val bookmarkedIds: StateFlow<Set<Long>> = playlistId
