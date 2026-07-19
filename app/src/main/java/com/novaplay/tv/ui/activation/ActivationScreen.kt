@@ -170,7 +170,7 @@ fun ActivationScreen(
                         IdentityPanel(
                             identity = identity,
                             license = license,
-                            onCheckNow = viewModel::checkNow,
+                            onCheckNow = viewModel::checkPlaylistsNow,
                             primaryActionFocus = primaryActionFocus,
                         )
                         PersonalPlaylistPanel(onAddPersonalPlaylist)
@@ -186,7 +186,7 @@ fun ActivationScreen(
                         IdentityPanel(
                             identity = identity,
                             license = license,
-                            onCheckNow = viewModel::checkNow,
+                            onCheckNow = viewModel::checkPlaylistsNow,
                             primaryActionFocus = primaryActionFocus,
                             modifier = Modifier.weight(1.15f),
                         )
