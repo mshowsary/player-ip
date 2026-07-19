@@ -11,15 +11,19 @@ import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.ManagedAccessRepository
 import com.novaplay.tv.data.repo.SyncRepository
 import com.novaplay.tv.data.repo.SyncStatus
+import com.novaplay.tv.data.repo.SyncTrigger
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -39,6 +43,29 @@ class HomeViewModel @Inject constructor(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     val syncStatus: StateFlow<SyncStatus> = syncRepository.status
+
+    // The progress modal auto-opens for user-initiated syncs only; silent
+    // startup/background refreshes must never steal focus from the hub. A
+    // dismissal hides it for the rest of that run and re-arms once the sync
+    // ends, so the next update shows it again.
+    private val syncModalDismissed = MutableStateFlow(false)
+
+    val syncModalVisible: StateFlow<Boolean> =
+        combine(syncRepository.status, syncModalDismissed) { status, dismissed ->
+            status is SyncStatus.Syncing && status.trigger == SyncTrigger.FOREGROUND && !dismissed
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    init {
+        viewModelScope.launch {
+            syncRepository.status.collect { status ->
+                if (status !is SyncStatus.Syncing) syncModalDismissed.value = false
+            }
+        }
+    }
+
+    fun dismissSyncModal() {
+        syncModalDismissed.value = true
+    }
 
     val managedAccess: StateFlow<ManagedAccessPolicy> = managedAccessRepository.policy
 

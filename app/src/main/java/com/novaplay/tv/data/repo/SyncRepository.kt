@@ -34,10 +34,21 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Byte progress of the visible download step; [totalBytes] <= 0 when the provider sent no size. */
+data class SyncProgress(val bytesRead: Long, val totalBytes: Long) {
+    /** Whole percent 0–100 when the total is known, null otherwise. */
+    val percent: Int?
+        get() = if (totalBytes > 0) ((bytesRead * 100) / totalBytes).toInt().coerceIn(0, 100) else null
+}
+
 /** Observable sync state for the UI; Failed carries a sanitized, user-safe message. */
 sealed interface SyncStatus {
     data object Idle : SyncStatus
-    data class Syncing(val step: String) : SyncStatus
+    data class Syncing(
+        val step: String,
+        val progress: SyncProgress? = null,
+        val trigger: SyncTrigger = SyncTrigger.FOREGROUND,
+    ) : SyncStatus
     data class Failed(val message: String) : SyncStatus
 }
 
@@ -76,6 +87,22 @@ class SyncRepository @Inject constructor(
 
     private val syncMutex = Mutex()
 
+    // What started the sync currently holding the mutex; carried on every
+    // Syncing emission so the UI can distinguish user-initiated runs from
+    // silent startup/background refreshes.
+    @Volatile private var activeTrigger = SyncTrigger.FOREGROUND
+
+    private fun emitSyncing(step: String, progress: SyncProgress? = null) {
+        _status.value = SyncStatus.Syncing(step, progress, activeTrigger)
+    }
+
+    // Marks a step as current and returns the byte-progress reporter the
+    // download plumbing calls (already throttled at the copy loops).
+    private fun beginStep(step: String): (bytesRead: Long, totalBytes: Long) -> Unit {
+        emitSyncing(step)
+        return { bytesRead, totalBytes -> emitSyncing(step, SyncProgress(bytesRead, totalBytes)) }
+    }
+
     /** Runs a startup-triggered sync only when the last one is older than [maxAgeMs] (12 h default). */
     suspend fun syncIfStale(playlist: Playlist, maxAgeMs: Long = STALE_AFTER_MS) {
         if (System.currentTimeMillis() - playlist.lastSyncEpochMs > maxAgeMs) {
@@ -94,6 +121,7 @@ class SyncRepository @Inject constructor(
         trigger: SyncTrigger = SyncTrigger.FOREGROUND,
     ): Result<Unit> = syncMutex.withLock {
         val startedAt = SystemClock.elapsedRealtime()
+        activeTrigger = trigger
         try {
             when (playlist.type) {
                 Playlist.TYPE_XTREAM -> syncXtream(playlist)
@@ -148,7 +176,7 @@ class SyncRepository @Inject constructor(
     // Refreshes account info (best-effort, failures ignored) and then the three
     // catalogue sections in sequence, updating the visible status per step.
     private suspend fun syncXtream(playlist: Playlist) {
-        _status.value = SyncStatus.Syncing("Checking account")
+        emitSyncing("Checking account")
         runCatching { xtream.userInfo(playlist) }.getOrNull()?.userInfo?.let { info ->
             db.playlistDao().updateAccountInfo(
                 id = playlist.id,
@@ -157,13 +185,8 @@ class SyncRepository @Inject constructor(
             )
         }
 
-        _status.value = SyncStatus.Syncing("Downloading Live TV")
         syncLive(playlist)
-
-        _status.value = SyncStatus.Syncing("Downloading Movies")
         syncMovies(playlist)
-
-        _status.value = SyncStatus.Syncing("Downloading Series")
         syncSeries(playlist)
     }
 
@@ -171,11 +194,12 @@ class SyncRepository @Inject constructor(
     // The old catalogue stays readable until a local-only replacement
     // transaction completes successfully.
     private suspend fun syncLive(playlist: Playlist) {
+        val onProgress = beginStep("Downloading Live TV")
         val categories = xtream.liveCategories(playlist)
         val snapshot = newSnapshot("live", ".json")
         try {
-            xtream.stageLiveStreams(playlist, snapshot)
-            _status.value = SyncStatus.Syncing("Installing Live TV")
+            xtream.stageLiveStreams(playlist, snapshot, onProgress)
+            emitSyncing("Installing Live TV")
             db.withTransaction {
                 val dao = db.liveDao()
                 dao.wipeChannels(playlist.id)
@@ -213,11 +237,12 @@ class SyncRepository @Inject constructor(
     // Same stage-then-replace pattern as syncLive: movies stream from the
     // snapshot into chunked inserts inside a single wipe-and-fill transaction.
     private suspend fun syncMovies(playlist: Playlist) {
+        val onProgress = beginStep("Downloading Movies")
         val categories = xtream.vodCategories(playlist)
         val snapshot = newSnapshot("movies", ".json")
         try {
-            xtream.stageVodStreams(playlist, snapshot)
-            _status.value = SyncStatus.Syncing("Installing Movies")
+            xtream.stageVodStreams(playlist, snapshot, onProgress)
+            emitSyncing("Installing Movies")
             db.withTransaction {
                 val dao = db.movieDao()
                 dao.wipeMovies(playlist.id)
@@ -260,11 +285,12 @@ class SyncRepository @Inject constructor(
     // Same stage-then-replace pattern for series; episodes are fetched later,
     // on demand, from the details screen rather than during sync.
     private suspend fun syncSeries(playlist: Playlist) {
+        val onProgress = beginStep("Downloading Series")
         val categories = xtream.seriesCategories(playlist)
         val snapshot = newSnapshot("series", ".json")
         try {
-            xtream.stageSeries(playlist, snapshot)
-            _status.value = SyncStatus.Syncing("Installing Series")
+            xtream.stageSeries(playlist, snapshot, onProgress)
+            emitSyncing("Installing Series")
             db.withTransaction {
                 val dao = db.seriesDao()
                 dao.wipeSeries(playlist.id)
@@ -309,7 +335,7 @@ class SyncRepository @Inject constructor(
     // failure) must never fail the catalogue sync. On failure the previous guide
     // stays readable and the summary reports its (still installed) row count.
     private suspend fun refreshGuide(playlist: Playlist): Int {
-        _status.value = SyncStatus.Syncing("Updating TV guide")
+        emitSyncing("Updating TV guide")
         // M3U syncs may have just discovered/updated the guide URL — reload the row.
         val fresh = db.playlistDao().getById(playlist.id) ?: playlist
         return runCatching { epgRepository.refresh(fresh, System.currentTimeMillis()) }
@@ -349,9 +375,9 @@ class SyncRepository @Inject constructor(
         val url = opened.url ?: error("M3U playlist has no URL")
         val snapshot = newSnapshot("m3u", ".m3u")
         try {
-            _status.value = SyncStatus.Syncing("Downloading playlist")
-            m3uParser.snapshot(url, snapshot)
-            _status.value = SyncStatus.Syncing("Installing playlist")
+            val onProgress = beginStep("Downloading playlist")
+            m3uParser.snapshot(url, snapshot, onProgress)
+            emitSyncing("Installing playlist")
             var discoveredGuideUrl: String? = null
             db.withTransaction {
                 val dao = db.liveDao()

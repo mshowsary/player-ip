@@ -66,7 +66,9 @@ import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
 import com.novaplay.tv.data.repo.ManagedAccessState
 import com.novaplay.tv.data.repo.ManagedFeature
+import com.novaplay.tv.core.DataSize
 import com.novaplay.tv.data.repo.SyncStatus
+import com.novaplay.tv.ui.components.SyncProgressDialog
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.PulsingDot
 import com.novaplay.tv.ui.theme.LocalNovaAccents
@@ -106,6 +108,7 @@ fun HomeScreen(
 ) {
     val playlist by viewModel.playlist.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
+    val syncModalVisible by viewModel.syncModalVisible.collectAsStateWithLifecycle()
     val managedAccess by viewModel.managedAccess.collectAsStateWithLifecycle()
     val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
     val recentChannels by viewModel.recentChannels.collectAsStateWithLifecycle()
@@ -231,8 +234,14 @@ fun HomeScreen(
                 is SyncStatus.Syncing -> {
                     PulsingDot(Modifier.size(8.dp))
                     Spacer(Modifier.width(10.dp))
+                    // The footer stays after the modal is closed: same step,
+                    // plus percent (or bytes while the total is unknown).
+                    val progressSuffix = status.progress?.let { progress ->
+                        progress.percent?.let { " · $it%" }
+                            ?: " · ${DataSize.format(progress.bytesRead)}"
+                    }.orEmpty()
                     Text(
-                        text = stringResource(R.string.home_syncing, status.step),
+                        text = stringResource(R.string.home_syncing, status.step) + progressSuffix,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -244,6 +253,16 @@ fun HomeScreen(
                 )
                 SyncStatus.Idle -> Unit
             }
+        }
+    }
+
+    (syncStatus as? SyncStatus.Syncing)?.let { syncing ->
+        if (syncModalVisible) {
+            SyncProgressDialog(
+                playlistName = playlist?.name,
+                status = syncing,
+                onClose = viewModel::dismissSyncModal,
+            )
         }
     }
 }

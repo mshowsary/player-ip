@@ -47,12 +47,14 @@ import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.db.Playlist
 import com.novaplay.tv.data.repo.PlaylistDraft
 import com.novaplay.tv.data.repo.PortalPairingSession
+import com.novaplay.tv.data.repo.SyncStatus
 import com.novaplay.tv.ui.components.AdaptiveFormField
 import com.novaplay.tv.ui.components.EmptyState
 import com.novaplay.tv.ui.components.NovaButton
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.components.QrImage
+import com.novaplay.tv.ui.components.SyncProgressDialog
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
@@ -75,6 +77,8 @@ fun AdaptivePlaylistsScreen(
     val activeId by viewModel.activeId.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
     val busy by viewModel.busy.collectAsStateWithLifecycle()
+    val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
+    val syncModalVisible by viewModel.syncModalVisible.collectAsStateWithLifecycle()
     val phoneEntry by viewModel.phoneEntry.collectAsStateWithLifecycle()
     val isTv = isTvDevice()
     val compact = isCompactWidth()
@@ -190,6 +194,19 @@ fun AdaptivePlaylistsScreen(
 
     phoneEntry?.let { session ->
         PhoneEntryDialog(session = session, onCancel = viewModel::cancelPhoneEntry)
+    }
+
+    // Live progress for the sync running behind `busy` (save & sync, import,
+    // manual "Sync"). Rendered last so it stacks above the editor dialog;
+    // closing it never stops the sync.
+    (syncStatus as? SyncStatus.Syncing)?.let { syncing ->
+        if (syncModalVisible) {
+            SyncProgressDialog(
+                playlistName = playlists.find { it.id == activeId }?.name,
+                status = syncing,
+                onClose = viewModel::dismissSyncModal,
+            )
+        }
     }
 
     actionsFor?.let { playlist ->

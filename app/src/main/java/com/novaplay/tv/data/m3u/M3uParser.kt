@@ -49,28 +49,36 @@ class M3uParser @Inject constructor(
     /**
      * Copies a remote or local M3U into a bounded cache file before Room changes
      * begin. If the network fails, the existing catalogue is untouched.
+     * onProgress receives (bytesRead, totalBytes), totalBytes -1 when unknown.
      */
-    suspend fun snapshot(url: String, destination: File): File = withContext(Dispatchers.IO) {
+    suspend fun snapshot(
+        url: String,
+        destination: File,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ): File = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
         try {
-            val input = when {
-                url.startsWith("file:") -> File(URI(url)).inputStream().buffered()
+            val (input, totalBytes) = when {
+                url.startsWith("file:") -> {
+                    val file = File(URI(url))
+                    file.inputStream().buffered() to file.length()
+                }
                 else -> {
                     val response = okHttpClient.newCall(Request.Builder().url(url).build()).execute()
                     if (!response.isSuccessful) {
                         response.close()
                         throw IOException("M3U download failed: HTTP ${response.code}")
                     }
-                    response.body?.byteStream()?.buffered()
-                        ?: run {
-                            response.close()
-                            throw IOException("M3U download failed: empty body")
-                        }
+                    val body = response.body ?: run {
+                        response.close()
+                        throw IOException("M3U download failed: empty body")
+                    }
+                    body.byteStream().buffered() to body.contentLength()
                 }
             }
             input.use { source ->
                 destination.outputStream().buffered().use { output ->
-                    copyWithLimit(source, output, MAX_SNAPSHOT_BYTES)
+                    copyWithLimit(source, output, MAX_SNAPSHOT_BYTES, totalBytes, onProgress)
                 }
             }
             destination
@@ -149,17 +157,30 @@ class M3uParser @Inject constructor(
     }
 
     // Streams input to output, failing once `limit` bytes are exceeded so a hostile or
-    // endless playlist can't fill the disk.
-    private fun copyWithLimit(input: InputStream, output: OutputStream, limit: Long) {
+    // endless playlist can't fill the disk. Progress is throttled to one report per
+    // PROGRESS_STEP_BYTES (plus a final one) so the UI flow isn't flooded.
+    private fun copyWithLimit(
+        input: InputStream,
+        output: OutputStream,
+        limit: Long,
+        totalBytes: Long = -1L,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ) {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
+        var nextReport = 0L
         while (true) {
             val read = input.read(buffer)
             if (read < 0) break
             total += read
             require(total <= limit) { "M3U playlist exceeds the ${limit / 1024 / 1024} MB safety limit" }
             output.write(buffer, 0, read)
+            if (total >= nextReport) {
+                onProgress(total, totalBytes)
+                nextReport = total + PROGRESS_STEP_BYTES
+            }
         }
+        onProgress(total, totalBytes)
     }
 
     // Guide source from the #EXTM3U header: url-tvg (or the x-tvg-url alias) may
@@ -195,5 +216,6 @@ class M3uParser @Inject constructor(
     private companion object {
         val ATTRIBUTE_REGEX = Regex("""([\w-]+)="([^"]*)"""")
         const val MAX_SNAPSHOT_BYTES = 256L * 1024 * 1024
+        const val PROGRESS_STEP_BYTES = 256L * 1024
     }
 }

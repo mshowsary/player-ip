@@ -13,6 +13,8 @@ import com.novaplay.tv.data.repo.PlaylistDraft
 import com.novaplay.tv.data.repo.PlaylistManager
 import com.novaplay.tv.data.repo.PortalPairingSession
 import com.novaplay.tv.data.repo.SyncRepository
+import com.novaplay.tv.data.repo.SyncStatus
+import com.novaplay.tv.data.repo.SyncTrigger
 import com.novaplay.tv.di.ApplicationScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -60,6 +63,31 @@ class PlaylistsViewModel @Inject constructor(
 
     private val _busy = MutableStateFlow(false)
     val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    /** Live step/progress of the sync running behind [busy], for the progress modal. */
+    val syncStatus: StateFlow<SyncStatus> = syncRepository.status
+
+    // Same contract as Home: the modal auto-opens for user-initiated syncs
+    // (save, import, "Sync"), a dismissal lasts for that run only, and silent
+    // startup/background refreshes never open it.
+    private val syncModalDismissed = MutableStateFlow(false)
+
+    val syncModalVisible: StateFlow<Boolean> =
+        combine(syncRepository.status, syncModalDismissed) { status, dismissed ->
+            status is SyncStatus.Syncing && status.trigger == SyncTrigger.FOREGROUND && !dismissed
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    init {
+        viewModelScope.launch {
+            syncRepository.status.collect { status ->
+                if (status !is SyncStatus.Syncing) syncModalDismissed.value = false
+            }
+        }
+    }
+
+    fun dismissSyncModal() {
+        syncModalDismissed.value = true
+    }
 
     private val _allRemoved = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val allRemoved: SharedFlow<Unit> = _allRemoved.asSharedFlow()

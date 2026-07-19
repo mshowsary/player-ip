@@ -16,6 +16,12 @@
     <string name="home_syncing">Synchronisation de %1$s…</string>
     <string name="home_last_sync_failed">La dernière synchronisation a échoué — le contenu peut être ancien</string>
 
+    <string name="sync_modal_title">Mise à jour de la playlist</string>
+    <string name="sync_modal_progress_of">%1$s sur %2$s</string>
+    <string name="sync_modal_downloaded">%1$s téléchargés</string>
+    <string name="sync_modal_hint">Vous pouvez fermer cette fenêtre — la mise à jour continue et la progression reste visible en bas de l\'écran.</string>
+    <string name="sync_modal_close">Fermer</string>
+
     <string name="managed_status_personal">Accès personnel</string>
     <string name="managed_status_active">Accès géré actif</string>
     <string name="managed_status_paused">Accès géré suspendu</string>

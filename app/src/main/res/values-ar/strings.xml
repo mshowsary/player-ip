@@ -16,6 +16,12 @@
     <string name="home_syncing">جارٍ مزامنة %1$s…</string>
     <string name="home_last_sync_failed">فشلت آخر مزامنة — قد يكون المحتوى قديمًا</string>
 
+    <string name="sync_modal_title">جارٍ تحديث قائمة التشغيل</string>
+    <string name="sync_modal_progress_of">%1$s من %2$s</string>
+    <string name="sync_modal_downloaded">تم تنزيل %1$s</string>
+    <string name="sync_modal_hint">يمكنك إغلاق هذه النافذة — سيستمر التحديث ويبقى التقدم ظاهرًا أسفل الشاشة.</string>
+    <string name="sync_modal_close">إغلاق</string>
+
     <string name="managed_status_personal">وصول شخصي</string>
     <string name="managed_status_active">الوصول المُدار مفعّل</string>
     <string name="managed_status_paused">الوصول المُدار متوقف مؤقتًا</string>

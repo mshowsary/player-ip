@@ -46,6 +46,10 @@ class ActivationRepository @Inject constructor(
     suspend fun checkAndAttach(): ActivationCheck {
         if (BuildConfig.MOCK_ACTIVATION) {
             managedAccessRepository.applyPortalPolicy(MockPortal.policy)
+            // Same contract as the real portal paths below: an empty
+            // assignment is NotRegistered, never Activated(0), so the setup
+            // screen stays up until a playlist actually exists.
+            if (MockPortal.playlists.isEmpty()) return ActivationCheck.NotRegistered
             attachManagedPlaylists(MockPortal.playlists)
             return ActivationCheck.Activated(MockPortal.playlists.size)
         }

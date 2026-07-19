@@ -88,22 +88,35 @@ class XtreamClient @Inject constructor(
 
     // Bulk sync first downloads to a bounded temporary file. Room transactions
     // then read local disk rather than holding a transaction open across a slow
-    // or interrupted provider connection.
-    suspend fun stageLiveStreams(playlist: Playlist, destination: File) {
+    // or interrupted provider connection. onProgress receives (bytesRead,
+    // totalBytes) with totalBytes -1 when the panel sends no Content-Length.
+    suspend fun stageLiveStreams(
+        playlist: Playlist,
+        destination: File,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ) {
         val opened = playlistSecrets.open(playlist)
-        stage(actionUrl(opened, "get_live_streams"), destination)
+        stage(actionUrl(opened, "get_live_streams"), destination, onProgress)
     }
 
     /** Stages get_vod_streams to a local file; see [stageLiveStreams]. */
-    suspend fun stageVodStreams(playlist: Playlist, destination: File) {
+    suspend fun stageVodStreams(
+        playlist: Playlist,
+        destination: File,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ) {
         val opened = playlistSecrets.open(playlist)
-        stage(actionUrl(opened, "get_vod_streams"), destination)
+        stage(actionUrl(opened, "get_vod_streams"), destination, onProgress)
     }
 
     /** Stages get_series to a local file; see [stageLiveStreams]. */
-    suspend fun stageSeries(playlist: Playlist, destination: File) {
+    suspend fun stageSeries(
+        playlist: Playlist,
+        destination: File,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ) {
         val opened = playlistSecrets.open(playlist)
-        stage(actionUrl(opened, "get_series"), destination)
+        stage(actionUrl(opened, "get_series"), destination, onProgress)
     }
 
     /** Stages the panel's full XMLTV guide (xmltv.php) to a local file; see [stageLiveStreams]. */
@@ -227,13 +240,17 @@ class XtreamClient @Inject constructor(
 
     // Downloads a response into a bounded local file; a partial file is deleted on any
     // failure so consumers never parse truncated JSON.
-    private suspend fun stage(url: String, destination: File) = withContext(Dispatchers.IO) {
+    private suspend fun stage(
+        url: String,
+        destination: File,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ) = withContext(Dispatchers.IO) {
         destination.parentFile?.mkdirs()
         try {
             api.raw(url).use { body ->
                 body.byteStream().use { input ->
                     destination.outputStream().buffered().use { output ->
-                        copyWithLimit(input, output, MAX_SNAPSHOT_BYTES)
+                        copyWithLimit(input, output, MAX_SNAPSHOT_BYTES, body.contentLength(), onProgress)
                     }
                 }
             }
@@ -270,21 +287,35 @@ class XtreamClient @Inject constructor(
         playlist.server.orEmpty().trimEnd('/').toHttpUrl()
 
     // Streams input to output, failing once `limit` bytes are exceeded so a runaway
-    // provider response can't fill the disk.
-    private fun copyWithLimit(input: InputStream, output: OutputStream, limit: Long) {
+    // provider response can't fill the disk. Progress is throttled to one report
+    // per PROGRESS_STEP_BYTES (plus a final one) so the UI flow isn't flooded.
+    private fun copyWithLimit(
+        input: InputStream,
+        output: OutputStream,
+        limit: Long,
+        totalBytes: Long = -1L,
+        onProgress: (Long, Long) -> Unit = { _, _ -> },
+    ) {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
+        var nextReport = 0L
         while (true) {
             val read = input.read(buffer)
             if (read < 0) break
             total += read
             require(total <= limit) { "Provider catalogue exceeds the ${limit / 1024 / 1024} MB safety limit" }
             output.write(buffer, 0, read)
+            if (total >= nextReport) {
+                onProgress(total, totalBytes)
+                nextReport = total + PROGRESS_STEP_BYTES
+            }
         }
+        onProgress(total, totalBytes)
     }
 
     private companion object {
         private val CATEGORY_LIST = kotlinx.serialization.builtins.ListSerializer(XtreamCategoryDto.serializer())
         private const val MAX_SNAPSHOT_BYTES = 256L * 1024 * 1024
+        private const val PROGRESS_STEP_BYTES = 256L * 1024
     }
 }

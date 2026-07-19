@@ -167,15 +167,13 @@ class ActivationViewModel @Inject constructor(
                 // During rollout, an already registered legacy portal device can
                 // still enter the app even when the new pairing endpoint is not
                 // available yet. New devices receive a clean retry state.
-                when (activationRepository.checkAndAttach()) {
-                    is ActivationCheck.Activated -> completeActivation()
-                    else -> {
-                        _uiState.value = _uiState.value.copy(
-                            phase = ActivationPhase.ERROR,
-                            checking = false,
-                            error = friendlyPairingError(error),
-                        )
-                    }
+                val fallback = activationRepository.checkAndAttach()
+                if (fallback !is ActivationCheck.Activated || !tryCompleteActivation()) {
+                    _uiState.value = _uiState.value.copy(
+                        phase = ActivationPhase.ERROR,
+                        checking = false,
+                        error = friendlyPairingError(error),
+                    )
                 }
             },
         )
@@ -240,9 +238,7 @@ class ActivationViewModel @Inject constructor(
                     countdownJob?.cancel()
                     currentSession = null
                     val attached = activationRepository.attachManagedPlaylists(result.playlists)
-                    if (attached > 0) {
-                        completeActivation()
-                    } else {
+                    if (attached == 0 || !tryCompleteActivation()) {
                         checkAssignedPlaylists(manual = false)
                     }
                     null
@@ -295,8 +291,17 @@ class ActivationViewModel @Inject constructor(
             while (isActive && _uiState.value.phase == ActivationPhase.WAITING_FOR_PLAYLIST) {
                 when (val result = activationRepository.checkAndAttach()) {
                     is ActivationCheck.Activated -> {
-                        completeActivation()
-                        return@launch
+                        if (tryCompleteActivation()) return@launch
+                        // Activated without an active playlist stored: keep
+                        // waiting rather than opening an empty Home.
+                        _uiState.value = _uiState.value.copy(
+                            checking = false,
+                            error = if (manual) {
+                                "The device is connected, but no playlist has been assigned yet."
+                            } else {
+                                null
+                            },
+                        )
                     }
                     ActivationCheck.NotRegistered -> {
                         _uiState.value = _uiState.value.copy(
@@ -334,9 +339,14 @@ class ActivationViewModel @Inject constructor(
         }
     }
 
-    // Terminal success: stops all polling, kicks off the first catalog sync on
-    // the app scope (so it outlives this screen), and tells the UI to navigate.
-    private fun completeActivation() {
+    // Terminal success, guarded: the screen may only be left once an active
+    // playlist truly exists in the database. Returns false — leaving the setup
+    // screen in place — when nothing is active yet, regardless of what the
+    // portal check claimed. On success it stops all polling, kicks off the
+    // first catalog sync on the app scope (so it outlives this screen), and
+    // tells the UI to navigate.
+    private suspend fun tryCompleteActivation(): Boolean {
+        val active = contentRepository.getActivePlaylist() ?: return false
         pairingJob?.cancel()
         countdownJob?.cancel()
         assignmentJob?.cancel()
@@ -345,10 +355,9 @@ class ActivationViewModel @Inject constructor(
             checking = false,
             error = null,
         )
-        appScope.launch {
-            contentRepository.getActivePlaylist()?.let { syncRepository.sync(it) }
-        }
+        appScope.launch { syncRepository.sync(active) }
         _activated.tryEmit(Unit)
+        return true
     }
 
     // Maps transport failures to user-facing copy without leaking any details.

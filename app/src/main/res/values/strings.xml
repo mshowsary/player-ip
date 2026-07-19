@@ -18,6 +18,12 @@
     <string name="home_syncing">Syncing %1$s…</string>
     <string name="home_last_sync_failed">Last sync failed — content may be out of date</string>
 
+    <string name="sync_modal_title">Updating playlist</string>
+    <string name="sync_modal_progress_of">%1$s of %2$s</string>
+    <string name="sync_modal_downloaded">%1$s downloaded</string>
+    <string name="sync_modal_hint">You can close this window — the update keeps running and progress stays visible at the bottom of the screen.</string>
+    <string name="sync_modal_close">Close</string>
+
     <string name="managed_status_personal">Personal access</string>
     <string name="managed_status_active">Managed access active</string>
     <string name="managed_status_paused">Managed access paused</string>
