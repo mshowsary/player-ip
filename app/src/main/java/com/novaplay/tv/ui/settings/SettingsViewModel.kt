@@ -20,6 +20,7 @@ import com.novaplay.tv.data.prefs.SubtitleColor
 import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleSize
 import com.novaplay.tv.data.prefs.SubtitleStyle
+import com.novaplay.tv.data.prefs.TimeFormatPreference
 import com.novaplay.tv.data.prefs.UiModePreference
 import com.novaplay.tv.data.repo.ActivationCheck
 import com.novaplay.tv.data.repo.ActivationRepository
@@ -119,6 +120,9 @@ class SettingsViewModel @Inject constructor(
     val accentTheme: StateFlow<AccentTheme> = prefs.accentTheme
         .stateIn(viewModelScope, SharingStarted.Eagerly, AccentTheme.BRAND)
 
+    val timeFormat: StateFlow<TimeFormatPreference> = prefs.timeFormat
+        .stateIn(viewModelScope, SharingStarted.Eagerly, TimeFormatPreference.AUTO)
+
     val subtitleStyle: StateFlow<SubtitleStyle> = prefs.subtitleStyle
         .stateIn(viewModelScope, SharingStarted.Eagerly, SubtitleStyle())
 
@@ -178,6 +182,11 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { prefs.setAccentTheme(theme) }
     }
 
+    /** Persists the 12/24-hour choice; every clock and programme time updates live. */
+    fun setTimeFormat(format: TimeFormatPreference) {
+        viewModelScope.launch { prefs.setTimeFormat(format) }
+    }
+
     /** Persists the subtitle text size; the preview and VOD playback pick it up immediately. */
     fun setSubtitleSize(size: SubtitleSize) = updateStyle { it.copy(size = size) }
     /** Persists the subtitle text color. */
@@ -234,6 +243,24 @@ class SettingsViewModel @Inject constructor(
             refreshDiagnostics()
             delay(2_500)
             _cacheCleared.value = false
+        }
+    }
+
+    private val _historyCleared = MutableStateFlow(false)
+    val historyCleared: StateFlow<Boolean> = _historyCleared.asStateFlow()
+
+    /**
+     * Empties the Recently-viewed rows of the active playlist across Live,
+     * Movies and Series. Bookmarks and resume positions stay.
+     */
+    fun clearViewingHistory() {
+        viewModelScope.launch {
+            contentRepository.getActivePlaylist()?.let {
+                contentRepository.clearRecents(it.id)
+            }
+            _historyCleared.value = true
+            delay(2_500)
+            _historyCleared.value = false
         }
     }
 

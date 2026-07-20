@@ -9,10 +9,12 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.novaplay.tv.data.prefs.AccentTheme
 import com.novaplay.tv.data.prefs.AppPreferences
+import com.novaplay.tv.data.prefs.TimeFormatPreference
 import com.novaplay.tv.data.prefs.UiModePreference
 import com.novaplay.tv.ui.navigation.NovaNavGraph
 import com.novaplay.tv.ui.theme.NovaPlayTheme
 import com.novaplay.tv.ui.theme.ProvideAdaptiveEnvironment
+import com.novaplay.tv.ui.theme.ProvideTimeFormat
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -41,10 +43,15 @@ class MainActivity : ComponentActivity() {
             val accentTheme = appPreferences.accentTheme.collectAsStateWithLifecycle(
                 initialValue = AccentTheme.BRAND,
             ).value
+            val timeFormat = appPreferences.timeFormat.collectAsStateWithLifecycle(
+                initialValue = TimeFormatPreference.AUTO,
+            ).value
 
             ProvideAdaptiveEnvironment(preference = uiMode) {
-                NovaPlayTheme(accentTheme = accentTheme) {
-                    NovaNavGraph(onImmersiveChanged = ::updateImmersiveMode)
+                ProvideTimeFormat(preference = timeFormat) {
+                    NovaPlayTheme(accentTheme = accentTheme) {
+                        NovaNavGraph(onImmersiveChanged = ::updateImmersiveMode)
+                    }
                 }
             }
         }

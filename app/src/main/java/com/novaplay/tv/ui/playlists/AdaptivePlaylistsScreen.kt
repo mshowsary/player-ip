@@ -55,6 +55,8 @@ import com.novaplay.tv.ui.components.NovaDialog
 import com.novaplay.tv.ui.components.QrImage
 import com.novaplay.tv.ui.components.SyncProgressDialog
 import com.novaplay.tv.ui.theme.isCompactWidth
+import com.novaplay.tv.core.TimeFormatPolicy
+import com.novaplay.tv.ui.theme.LocalUse24Hour
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 import java.text.SimpleDateFormat
@@ -459,7 +461,7 @@ private fun PlaylistSummary(
                 text = listOf(
                     if (playlist.type == Playlist.TYPE_XTREAM) "Xtream" else "M3U",
                     if (personal) "Personal" else "Managed",
-                    playlist.syncLabel(),
+                    playlist.syncLabel(LocalUse24Hour.current),
                 ).joinToString("  ·  "),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -720,19 +722,20 @@ private fun PlaylistTypeChoice(
 }
 
 // Human-readable last-sync status for the metadata line; 0 means never synced.
-private fun Playlist.syncLabel(): String = if (lastSyncEpochMs <= 0L) {
+private fun Playlist.syncLabel(use24: Boolean): String = if (lastSyncEpochMs <= 0L) {
     "Not synchronized"
 } else {
-    "Synced ${formatDateTime(lastSyncEpochMs)}"
+    "Synced ${formatDateTime(lastSyncEpochMs, use24)}"
 }
 
 // Locale-aware date, e.g. "Mar 4, 2026" — used for account expiry.
 private fun formatDate(epochMs: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(epochMs))
 
-// Locale-aware date + time, e.g. "Mar 4, 18:32" — used for the last-sync label.
-private fun formatDateTime(epochMs: Long): String =
-    SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(Date(epochMs))
+// Date + time honoring the 12/24-hour setting — used for the last-sync label.
+private fun formatDateTime(epochMs: Long, use24: Boolean): String =
+    SimpleDateFormat(TimeFormatPolicy.dateTimePattern(use24), Locale.getDefault())
+        .format(Date(epochMs))
 
 /**
  * One identity everywhere: managing playlists from a phone means signing in

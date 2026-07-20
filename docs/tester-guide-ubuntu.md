@@ -96,6 +96,13 @@ now"** on the box → channels should appear within seconds, then:
    after entering it everything returns. Settings → Parental controls
    has "Lock now" and Change PIN. Hold OK again (PIN) to unlock the
    category for good.
+8. **Time format**: Settings -> Interface -> Time format -> 12-hour: the
+   Home clock and the programme times in the live player switch to AM/PM
+   instantly; 24-hour switches back; Auto follows the box's own setting.
+9. **Clear viewing history**: watch two channels so they appear under
+   Recently viewed (and the Home rail), then Settings -> Storage and
+   synchronization -> Clear viewing history -> both empty out. Bookmarks
+   and movie/series resume positions must survive.
 
 ## 3. Tour B — the owner web portal
 
@@ -150,7 +157,12 @@ Then in a **private browser window**: `http://localhost:8000/portal/login`
    a NEW MAC — that's by design), read the new MAC off the TV, then move
    the license from the old MAC to the new one → old shows revoked, new
    shows licensed.
-7. Sanity: activating with 0 credits left must refuse politely.
+7. **Playlist checker**: check an M3U link against the fake server
+   (`http://127.0.0.1:8899/playlist.m3u`) → WORKING with a channel count;
+   check an Xtream account against `http://127.0.0.1:8899` (any
+   username/password) → WORKING with an expiry; then a nonsense address →
+   FAILED with a human reason, never a raw error or the server name.
+8. Sanity: activating with 0 credits left must refuse politely.
 
 ## 4b. Tour D — owner extras (downloads & notices)
 
