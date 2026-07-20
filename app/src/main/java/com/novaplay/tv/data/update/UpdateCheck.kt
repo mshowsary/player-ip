@@ -13,15 +13,23 @@ import java.net.URI
  * ```json
  * {"version_code": 1000002, "version_name": "1.0.1",
  *  "apk_url": "https://updates.example.com/player-1.0.1.apk",
- *  "notes": "What changed"}
+ *  "apk_sha256": "<hex digest of the APK>",
+ *  "notes": "What changed",
+ *  "signature": "<base64 RSA signature, see tools/sign_update_manifest.py>"}
  * ```
+ *
+ * Brands that pin an update public key require the signature; unsigned
+ * manifests then read as invalid, so a compromised update host cannot point
+ * users at a rogue APK.
  */
 @Serializable
 data class UpdateManifestDto(
     @Serializable(with = LenientLong::class) @SerialName("version_code") val versionCode: Long = 0,
     @Serializable(with = LenientStringOrNull::class) @SerialName("version_name") val versionName: String? = null,
     @Serializable(with = LenientStringOrNull::class) @SerialName("apk_url") val apkUrl: String? = null,
+    @Serializable(with = LenientStringOrNull::class) @SerialName("apk_sha256") val apkSha256: String? = null,
     @Serializable(with = LenientStringOrNull::class) val notes: String? = null,
+    @Serializable(with = LenientStringOrNull::class) val signature: String? = null,
 )
 
 /** Outcome of comparing the manifest against the running build. */
@@ -60,12 +68,54 @@ object UpdateCheckPolicy {
         }
     }
 
+    /**
+     * The exact bytes a manifest signature covers, built from the raw
+     * (untrimmed) fields so the signer and the verifier can never disagree.
+     * Must match tools/sign_update_manifest.py.
+     */
+    fun signingPayload(dto: UpdateManifestDto): ByteArray = buildString {
+        append(dto.versionCode)
+        append('\n')
+        append(dto.versionName.orEmpty())
+        append('\n')
+        append(dto.apkUrl.orEmpty())
+        append('\n')
+        append(dto.apkSha256.orEmpty())
+        append('\n')
+        append(dto.notes.orEmpty())
+    }.toByteArray(Charsets.UTF_8)
+
+    /**
+     * Whether [dto]'s signature verifies against [publicKeyDerBase64]
+     * (an RSA public key, base64 of the X.509/DER encoding, single line).
+     * Any parse or crypto failure is simply false — the caller fails closed.
+     */
+    fun signatureValid(dto: UpdateManifestDto, publicKeyDerBase64: String): Boolean =
+        runCatching {
+            val keyBytes = java.util.Base64.getDecoder().decode(publicKeyDerBase64.trim())
+            val publicKey = java.security.KeyFactory.getInstance("RSA")
+                .generatePublic(java.security.spec.X509EncodedKeySpec(keyBytes))
+            val signatureBytes = java.util.Base64.getDecoder()
+                .decode(dto.signature.orEmpty().trim())
+            java.security.Signature.getInstance("SHA256withRSA").run {
+                initVerify(publicKey)
+                update(signingPayload(dto))
+                verify(signatureBytes)
+            }
+        }.getOrDefault(false)
+
     fun evaluate(
         currentVersionCode: Long,
         manifest: UpdateManifestDto?,
         allowLocalHttp: Boolean,
+        pinnedPublicKey: String? = null,
     ): UpdateDecision {
         val dto = manifest ?: return UpdateDecision.Invalid
+        // A pinned key makes the signature mandatory: unsigned or tampered
+        // manifests fail closed before any field is even considered.
+        if (!pinnedPublicKey.isNullOrBlank() && !signatureValid(dto, pinnedPublicKey)) {
+            return UpdateDecision.Invalid
+        }
         val versionName = dto.versionName?.trim().orEmpty()
         val apkUrl = dto.apkUrl?.trim().orEmpty()
         if (dto.versionCode <= 0 || versionName.isEmpty() || apkUrl.isEmpty()) {

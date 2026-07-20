@@ -9,6 +9,63 @@ class UpdateCheckPolicyTest {
 
     private val current = 1_000_001L
 
+    // A real RSA pair generated per test run: the signing contract is
+    // exercised end to end, not against canned strings.
+    private val keyPair = java.security.KeyPairGenerator.getInstance("RSA")
+        .apply { initialize(2048) }
+        .generateKeyPair()
+    private val pinnedKey: String =
+        java.util.Base64.getEncoder().encodeToString(keyPair.public.encoded)
+
+    private fun signed(dto: UpdateManifestDto): UpdateManifestDto {
+        val signature = java.security.Signature.getInstance("SHA256withRSA").run {
+            initSign(keyPair.private)
+            update(UpdateCheckPolicy.signingPayload(dto))
+            sign()
+        }
+        return dto.copy(signature = java.util.Base64.getEncoder().encodeToString(signature))
+    }
+
+    @Test
+    fun pinnedKeyAcceptsAProperlySignedManifest() {
+        val decision = UpdateCheckPolicy.evaluate(
+            current, signed(manifest()), allowLocalHttp = false, pinnedPublicKey = pinnedKey,
+        )
+        assertTrue(decision is UpdateDecision.Available)
+    }
+
+    @Test
+    fun pinnedKeyRejectsUnsignedManifests() {
+        assertEquals(
+            UpdateDecision.Invalid,
+            UpdateCheckPolicy.evaluate(current, manifest(), false, pinnedKey),
+        )
+    }
+
+    @Test
+    fun pinnedKeyRejectsTamperedManifests() {
+        val tampered = signed(manifest()).copy(apkUrl = "https://evil.example.com/malware.apk")
+        assertEquals(
+            UpdateDecision.Invalid,
+            UpdateCheckPolicy.evaluate(current, tampered, false, pinnedKey),
+        )
+    }
+
+    @Test
+    fun pinnedKeyRejectsGarbageSignaturesWithoutCrashing() {
+        val garbage = manifest().copy(signature = "not-base64!!!")
+        assertEquals(
+            UpdateDecision.Invalid,
+            UpdateCheckPolicy.evaluate(current, garbage, false, pinnedKey),
+        )
+    }
+
+    @Test
+    fun withoutAPinnedKeyUnsignedManifestsStillWork() {
+        val decision = UpdateCheckPolicy.evaluate(current, manifest(), false, pinnedPublicKey = "")
+        assertTrue(decision is UpdateDecision.Available)
+    }
+
     private fun manifest(
         code: Long = 1_000_002L,
         name: String? = "1.0.1",

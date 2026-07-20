@@ -68,6 +68,7 @@ class UpdateRepository @Inject constructor(
                     currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
                     manifest = manifest,
                     allowLocalHttp = BuildConfig.DEBUG,
+                    pinnedPublicKey = BuildConfig.UPDATE_PUBLIC_KEY,
                 )
             ) {
                 UpdateDecision.UpToDate -> UpdateCheckState.UpToDate
