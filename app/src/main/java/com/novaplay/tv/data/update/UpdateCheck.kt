@@ -90,12 +90,15 @@ object UpdateCheckPolicy {
      * (an RSA public key, base64 of the X.509/DER encoding, single line).
      * Any parse or crypto failure is simply false — the caller fails closed.
      */
+    @OptIn(kotlin.io.encoding.ExperimentalEncodingApi::class)
     fun signatureValid(dto: UpdateManifestDto, publicKeyDerBase64: String): Boolean =
         runCatching {
-            val keyBytes = java.util.Base64.getDecoder().decode(publicKeyDerBase64.trim())
+            // kotlin.io.encoding works on every supported API level (java.util
+            // .Base64 needs 26; minSdk is lower).
+            val keyBytes = kotlin.io.encoding.Base64.decode(publicKeyDerBase64.trim())
             val publicKey = java.security.KeyFactory.getInstance("RSA")
                 .generatePublic(java.security.spec.X509EncodedKeySpec(keyBytes))
-            val signatureBytes = java.util.Base64.getDecoder()
+            val signatureBytes = kotlin.io.encoding.Base64
                 .decode(dto.signature.orEmpty().trim())
             java.security.Signature.getInstance("SHA256withRSA").run {
                 initVerify(publicKey)
