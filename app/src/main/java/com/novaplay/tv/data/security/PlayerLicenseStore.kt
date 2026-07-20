@@ -19,6 +19,8 @@ data class PlayerLicense(
     val secret: String,
     val status: String,
     val trialDaysLeft: Int,
+    /** When the portal last confirmed this state; 0 = unknown (pre-upgrade rows). */
+    val verifiedAtMs: Long = 0L,
 )
 
 /**
@@ -40,16 +42,32 @@ class PlayerLicenseStore @Inject constructor(
             .putString(KEY_SECRET, encrypt(license.secret))
             .putString(KEY_STATUS, license.status)
             .putInt(KEY_DAYS_LEFT, license.trialDaysLeft)
+            .putLong(KEY_VERIFIED_AT, System.currentTimeMillis())
             .apply()
     }
 
-    /** Updates the cached status without touching the sealed secret. */
+    /** Updates the cached status without touching the sealed secret; stamps
+     * the verification time the offline grace window is measured from. */
     @Synchronized
     fun updateStatus(status: String, trialDaysLeft: Int) {
         preferences.edit()
             .putString(KEY_STATUS, status)
             .putInt(KEY_DAYS_LEFT, trialDaysLeft)
+            .putLong(KEY_VERIFIED_AT, System.currentTimeMillis())
             .apply()
+    }
+
+    /** When this install first tried to reach the portal; null before that. */
+    @Synchronized
+    fun firstAttemptAtMs(): Long? =
+        preferences.getLong(KEY_FIRST_ATTEMPT, 0L).takeIf { it > 0L }
+
+    /** Stamps the first portal attempt exactly once (bootstrap-grace anchor). */
+    @Synchronized
+    fun markFirstAttempt() {
+        if (preferences.getLong(KEY_FIRST_ATTEMPT, 0L) <= 0L) {
+            preferences.edit().putLong(KEY_FIRST_ATTEMPT, System.currentTimeMillis()).apply()
+        }
     }
 
     /** Returns the stored identity; decryption failure wipes and returns null. */
@@ -63,6 +81,7 @@ class PlayerLicenseStore @Inject constructor(
                 secret = decrypt(sealed),
                 status = preferences.getString(KEY_STATUS, "trial") ?: "trial",
                 trialDaysLeft = preferences.getInt(KEY_DAYS_LEFT, 0),
+                verifiedAtMs = preferences.getLong(KEY_VERIFIED_AT, 0L),
             )
         }.getOrElse {
             clear()
@@ -120,6 +139,8 @@ class PlayerLicenseStore @Inject constructor(
         const val KEY_SECRET = "secret"
         const val KEY_STATUS = "status"
         const val KEY_DAYS_LEFT = "days_left"
+        const val KEY_VERIFIED_AT = "verified_at"
+        const val KEY_FIRST_ATTEMPT = "first_attempt_at"
         const val KEYSTORE = "AndroidKeyStore"
         const val KEY_ALIAS = "novaplay_player_license_v1"
         const val TRANSFORMATION = "AES/GCM/NoPadding"

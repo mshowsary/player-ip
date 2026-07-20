@@ -151,9 +151,12 @@ adb shell pm clear com.novaplay.tv                    # wipe app -> back to setu
   `com.novaplay.tv` (used in the commands above).
 - The Room DB lives at `/data/data/com.novaplay.tv/databases/novaplay.db`
   (`adb shell "run-as com.novaplay.tv sqlite3 databases/novaplay.db '.tables'"` on debug builds).
-- Device identity (Device ID + MAC + key) persists in DataStore — `pm clear` regenerates it,
-  and the MAC re-resolves through the chain (`NetworkInterface` eth0 → wlan0 →
-  `/sys/class/net/eth0/address` → `ANDROID_ID`-derived pseudo-MAC; emulators land on the last).
+- Device identity (Device ID + MAC + key) persists in DataStore. `pm clear` regenerates the
+  Device ID and key, but the MAC re-resolves through a deterministic chain
+  (`NetworkInterface` eth0 → wlan0 → `/sys/class/net/eth0/address` → `ANDROID_ID`-derived
+  pseudo-MAC; emulators land on the last) and usually comes back identical — the portal then
+  reattaches the install to its existing device row (reinstall takeover), preserving the
+  license and the trial clock. Wiping data is not a fresh trial.
 - Testing against a **real Xtream panel**: add it as a personal playlist in the app — no code
   changes, and credentials are Keystore-encrypted before persistence. Never commit provider
   URLs or credentials anywhere.
@@ -219,7 +222,13 @@ Key behaviors:
 - **Bookmarks**: keyed by the provider's stable stream/series id so they survive re-syncs;
   surfaced as a Home rail and in Live TV.
 - **Subtitle styling**: global `CaptionStyleCompat` via `SubtitleView`, live preview in Settings.
+- **Parental control**: 4-digit PIN (salted hash, attempt lockout) locks categories across
+  Live/Movies/Series; locked content is excluded in the Room queries (browse, search,
+  zapping, Home rails), not just hidden in the UI.
+- **Licensing**: self-service installs verify against the portal; enforcement uses the
+  last verified state with a bounded 72 h offline grace (lifetime licenses stay valid
+  offline indefinitely once verified).
 
 ## Out of scope (v1, by design)
 
-Full EPG grid, catch-up/timeshift, parental lock, multi-screen.
+Full EPG grid, catch-up/timeshift, multi-screen.

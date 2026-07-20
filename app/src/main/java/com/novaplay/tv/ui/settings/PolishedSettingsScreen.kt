@@ -60,6 +60,7 @@ import androidx.tv.material3.Text
 import com.novaplay.tv.BuildConfig
 import com.novaplay.tv.data.prefs.AccentTheme
 import com.novaplay.tv.data.repo.LicenseInfo
+import com.novaplay.tv.data.repo.PinAttempt
 import com.novaplay.tv.data.prefs.HomeLayout
 import com.novaplay.tv.data.prefs.LiveFormat
 import com.novaplay.tv.data.prefs.SubtitleBackground
@@ -303,7 +304,7 @@ private fun ParentalPanel(
     pinConfigured: Boolean,
     sessionUnlocked: Boolean,
     lockedCount: Int,
-    onCheckPin: suspend (String) -> Boolean,
+    onCheckPin: suspend (String) -> PinAttempt,
     onSetPin: suspend (String) -> Boolean,
     onRelock: () -> Unit,
 ) {
@@ -347,11 +348,14 @@ private fun ParentalPanel(
             error = error,
             onSubmit = { pin ->
                 scope.launch {
-                    if (onCheckPin(pin)) {
-                        error = null
-                        flow = PinFlow.ENTER_NEW
-                    } else {
-                        error = "Wrong PIN — try again"
+                    when (val result = onCheckPin(pin)) {
+                        PinAttempt.Ok -> {
+                            error = null
+                            flow = PinFlow.ENTER_NEW
+                        }
+                        PinAttempt.Wrong -> error = "Wrong PIN — try again"
+                        is PinAttempt.Locked ->
+                            error = "Too many attempts — try again in ${result.waitSeconds} s"
                     }
                 }
             },

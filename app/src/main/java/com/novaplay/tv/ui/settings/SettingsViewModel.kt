@@ -349,8 +349,8 @@ class SettingsViewModel @Inject constructor(
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    /** Checks the current PIN without unlocking (change-PIN flow, step one). */
-    suspend fun checkParentalPin(pin: String): Boolean = parentalRepository.checkPin(pin)
+    /** Checks the current PIN without unlocking (change-PIN flow, step one); lockout-aware. */
+    suspend fun checkParentalPin(pin: String) = parentalRepository.checkPin(pin)
 
     /** Sets or replaces the parental PIN; false for non-4-digit input. */
     suspend fun setParentalPin(pin: String): Boolean = parentalRepository.setPin(pin)

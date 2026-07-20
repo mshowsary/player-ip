@@ -509,7 +509,10 @@ class LivePlayerViewModel @Inject constructor(
         val gate = PlaybackGatePolicy.blockMessage(
             isPersonalPlaylist = contentRepository.isPersonalPlaylist(channel.playlistId),
             licenseStatus = license?.status,
-            stale = license?.stale ?: true,
+            daysLeftAtVerification = license?.trialDaysLeft ?: 0,
+            verifiedAtMs = license?.verifiedAtMs,
+            firstAttemptAtMs = playerLicenseRepository.firstAttemptAtMs(),
+            nowMs = System.currentTimeMillis(),
             deviceCode = license?.deviceCode,
         )
         if (gate != null) {

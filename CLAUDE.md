@@ -84,6 +84,8 @@ Core flows:
 - **Sync:** Xtream/M3U data is transactionally installed in Room. Existing catalogues remain readable after failed refreshes.
 - **Secrets:** credentials and portal tokens are encrypted through Android Keystore before persistence.
 - **Live playback:** bounded retries, stall detection and HLS/MPEG-TS fallback.
+- **Licensing:** self-service installs enforce at playback from the last verified portal state with a bounded 72 h offline grace; verified lifetime licenses never require connectivity again. Managed playlists are never gated.
+- **Parental control:** 4-digit PIN (salted hash, lockout after repeated failures) locks categories; locked content is excluded at the SQL level from browse, search, zapping and Home rails.
 - **EPG:** XMLTV programmes are matched to channels via a normalized key shared by Xtream `epg_channel_id`, M3U `tvg-id` and XMLTV `channel`, and stored only inside a bounded retention window (12 h back / 48 h forward) to protect low-end storage.
 - **Search:** FTS4 prefix matching with debounce and stale-query cancellation.
 - **Watch progress:** persisted periodically and on stop; resume and completion rules live in pure policy objects.
