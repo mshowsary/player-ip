@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.tv.material3.MaterialTheme
 import androidx.tv.material3.Text
 import com.novaplay.tv.core.ParentalPinPolicy
+import com.novaplay.tv.data.repo.PinAttempt
 import kotlinx.coroutines.launch
 
 /** Parental-control snapshot a category surface renders from. */
@@ -62,7 +63,7 @@ internal data class GateRequest(
 @Stable
 class ParentalGateState internal constructor(
     private val state: State<ParentalUiState>,
-    internal val onUnlock: suspend (String) -> Boolean,
+    internal val onUnlock: suspend (String) -> PinAttempt,
     internal val onSetPin: suspend (String) -> Boolean,
     internal val onToggleLock: (Long) -> Unit,
 ) {
@@ -99,7 +100,7 @@ class ParentalGateState internal constructor(
 @Composable
 fun rememberParentalGate(
     state: ParentalUiState,
-    onUnlock: suspend (String) -> Boolean,
+    onUnlock: suspend (String) -> PinAttempt,
     onSetPin: suspend (String) -> Boolean,
     onToggleLock: (Long) -> Unit,
 ): ParentalGateState {
@@ -138,15 +139,22 @@ fun ParentalGateDialogs(gate: ParentalGateState) {
         error = error,
         onSubmit = { pin ->
             scope.launch {
-                val ok = if (creating) gate.onSetPin(pin) else gate.onUnlock(pin)
-                if (ok) {
-                    when (request.mode) {
-                        GateMode.UNLOCK_TO_OPEN -> request.proceed?.invoke()
-                        else -> request.categoryId?.let(gate.onToggleLock)
-                    }
-                    gate.dismiss()
+                val result = if (creating) {
+                    if (gate.onSetPin(pin)) PinAttempt.Ok else PinAttempt.Wrong
                 } else {
-                    error = "Wrong PIN — try again"
+                    gate.onUnlock(pin)
+                }
+                when (result) {
+                    PinAttempt.Ok -> {
+                        when (request.mode) {
+                            GateMode.UNLOCK_TO_OPEN -> request.proceed?.invoke()
+                            else -> request.categoryId?.let(gate.onToggleLock)
+                        }
+                        gate.dismiss()
+                    }
+                    PinAttempt.Wrong -> error = "Wrong PIN — try again"
+                    is PinAttempt.Locked ->
+                        error = "Too many attempts — try again in ${result.waitSeconds} s"
                 }
             }
         },

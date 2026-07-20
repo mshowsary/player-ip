@@ -21,6 +21,8 @@ data class LicenseInfo(
     val trialDaysLeft: Int,
     /** True when the value comes from cache because the portal was unreachable. */
     val stale: Boolean = false,
+    /** When the portal last confirmed this state; null = never/unknown. */
+    val verifiedAtMs: Long? = null,
 )
 
 /**
@@ -45,9 +47,14 @@ class PlayerLicenseRepository @Inject constructor(
                 .assess(BuildConfig.PORTAL_BASE_URL, BuildConfig.DEBUG)
                 .let { it.configured && it.transportAllowed }
 
+    /** When this install first tried to reach the portal; the playback
+     * gate's bootstrap-grace clock starts here. Null before any attempt. */
+    fun firstAttemptAtMs(): Long? = store.firstAttemptAtMs()
+
     /** Registers on first call, otherwise refreshes; safe to call at launch. */
     suspend fun refresh() {
         if (!available) return
+        store.markFirstAttempt()
         val stored = store.load()
         if (stored == null) {
             register()
@@ -73,7 +80,12 @@ class PlayerLicenseRepository @Inject constructor(
             return
         }
         store.updateStatus(body.status, body.trialDaysLeft)
-        _license.value = LicenseInfo(stored.deviceCode, body.status, body.trialDaysLeft)
+        _license.value = LicenseInfo(
+            deviceCode = stored.deviceCode,
+            status = body.status,
+            trialDaysLeft = body.trialDaysLeft,
+            verifiedAtMs = System.currentTimeMillis(),
+        )
     }
 
     private suspend fun register() {
@@ -103,11 +115,18 @@ class PlayerLicenseRepository @Inject constructor(
             secret = secret,
             status = body.status,
             trialDaysLeft = body.trialDaysLeft,
+            verifiedAtMs = System.currentTimeMillis(),
         )
         store.save(license)
         _license.value = license.toInfo(stale = false)
     }
 
     private fun PlayerLicense.toInfo(stale: Boolean) =
-        LicenseInfo(deviceCode, status, trialDaysLeft, stale)
+        LicenseInfo(
+            deviceCode = deviceCode,
+            status = status,
+            trialDaysLeft = trialDaysLeft,
+            stale = stale,
+            verifiedAtMs = verifiedAtMs.takeIf { it > 0L },
+        )
 }

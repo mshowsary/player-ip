@@ -116,8 +116,8 @@ class LiveViewModel @Inject constructor(
         ParentalUiState(pinConfigured = configured, sessionUnlocked = unlocked, lockedIds = locked)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ParentalUiState())
 
-    /** Verifies the PIN and unlocks the session on success. */
-    suspend fun unlockParental(pin: String): Boolean = parentalRepository.unlock(pin)
+    /** Verifies the PIN (lockout-aware) and unlocks the session on success. */
+    suspend fun unlockParental(pin: String) = parentalRepository.unlock(pin)
 
     /** Creates the parental PIN (first lock ever); false for non-4-digit input. */
     suspend fun setParentalPin(pin: String): Boolean = parentalRepository.setPin(pin)

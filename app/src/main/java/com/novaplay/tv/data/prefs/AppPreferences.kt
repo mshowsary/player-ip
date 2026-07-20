@@ -194,6 +194,8 @@ class AppPreferences @Inject constructor(
         val LAST_SYNC_ERROR = stringPreferencesKey("last_sync_error")
         val PARENTAL_PIN = stringPreferencesKey("parental_pin")
         val PARENTAL_LOCKED = stringSetPreferencesKey("parental_locked_categories")
+        val PARENTAL_FAILS = intPreferencesKey("parental_failed_attempts")
+        val PARENTAL_LAST_FAIL = longPreferencesKey("parental_last_fail_at")
     }
 
     // By-name enum lookup falling back to the default, so a stored value that no longer
@@ -405,6 +407,20 @@ class AppPreferences @Inject constructor(
     /** Replaces the whole locked-category set atomically. */
     suspend fun setParentalLockedKeys(keys: Set<String>) {
         context.dataStore.edit { it[Keys.PARENTAL_LOCKED] = keys }
+    }
+
+    /** (failed attempts, last failure epoch ms) feeding the PIN lockout. */
+    suspend fun parentalFailureState(): Pair<Int, Long> {
+        val prefs = context.dataStore.data.first()
+        return (prefs[Keys.PARENTAL_FAILS] ?: 0) to (prefs[Keys.PARENTAL_LAST_FAIL] ?: 0L)
+    }
+
+    /** Persists the PIN failure counter so force-stopping cannot reset it. */
+    suspend fun setParentalFailureState(failedAttempts: Int, lastFailAtMs: Long) {
+        context.dataStore.edit {
+            it[Keys.PARENTAL_FAILS] = failedAttempts
+            it[Keys.PARENTAL_LAST_FAIL] = lastFailAtMs
+        }
     }
 
     // Blank strings are removed rather than stored, keeping "absent" distinct from "".
