@@ -92,18 +92,21 @@ import com.novaplay.tv.R
 import com.novaplay.tv.data.db.LiveChannel
 import com.novaplay.tv.data.epg.EpgNowNext
 import com.novaplay.tv.data.prefs.VideoScale
+import com.novaplay.tv.core.TimeFormatPolicy
 import com.novaplay.tv.ui.components.ErrorState
 import com.novaplay.tv.ui.components.NovaClickable
 import com.novaplay.tv.ui.player.BufferingIndicator
 import com.novaplay.tv.ui.player.PlayerSurface
 import com.novaplay.tv.ui.theme.LocalNovaAccents
+import com.novaplay.tv.ui.theme.LocalUse24Hour
 import com.novaplay.tv.ui.theme.isCompactWidth
 import com.novaplay.tv.ui.theme.isTvDevice
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
-import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -524,8 +527,11 @@ private fun ChannelInfoBar(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                // Locale-aware short times, e.g. "18:30 – 20:00  Evening News".
-                val timeFormat = remember { DateFormat.getTimeInstance(DateFormat.SHORT) }
+                // Programme times honoring the 12/24-hour setting.
+                val use24 = LocalUse24Hour.current
+                val timeFormat = remember(use24) {
+                    SimpleDateFormat(TimeFormatPolicy.timePattern(use24), Locale.getDefault())
+                }
                 nowNext.now?.let { airing ->
                     Spacer(Modifier.height(4.dp))
                     Text(

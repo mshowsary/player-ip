@@ -23,6 +23,13 @@ enum class UiModePreference(val label: String) {
     TV("TV / remote"),
 }
 
+/** Clock style for the Home clock and programme times; AUTO follows the system's 24-hour setting. */
+enum class TimeFormatPreference(val label: String) {
+    AUTO("Auto"),
+    H12("12-hour"),
+    H24("24-hour"),
+}
+
 /** Container requested for live streams; AUTO lets the app choose per provider. */
 enum class LiveFormat(val label: String) {
     AUTO("Auto"),
@@ -159,6 +166,7 @@ class AppPreferences @Inject constructor(
         val DEVICE_MAC = stringPreferencesKey("device_mac")
         val DEVICE_KEY = stringPreferencesKey("device_key")
         val UI_MODE = stringPreferencesKey("ui_mode")
+        val TIME_FORMAT = stringPreferencesKey("time_format")
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val ACCENT_THEME = stringPreferencesKey("accent_theme")
         val LIVE_FORMAT = stringPreferencesKey("live_format")
@@ -224,6 +232,15 @@ class AppPreferences @Inject constructor(
     /** Stores the navigation-style override; takes effect live via [uiMode] collectors. */
     suspend fun setUiMode(mode: UiModePreference) {
         context.dataStore.edit { it[Keys.UI_MODE] = mode.name }
+    }
+
+    val timeFormat: Flow<TimeFormatPreference> = context.dataStore.data
+        .map { it[Keys.TIME_FORMAT].toEnum(TimeFormatPreference.AUTO) }
+        .distinctUntilChanged()
+
+    /** Stores the clock style; clocks and programme times restyle live. */
+    suspend fun setTimeFormat(format: TimeFormatPreference) {
+        context.dataStore.edit { it[Keys.TIME_FORMAT] = format.name }
     }
 
     val homeLayout: Flow<HomeLayout> = context.dataStore.data

@@ -75,6 +75,8 @@ import com.novaplay.tv.ui.theme.LocalNovaAccents
 import com.novaplay.tv.ui.theme.NovaGlassHighlight
 import com.novaplay.tv.ui.theme.WindowWidthClass
 import com.novaplay.tv.ui.theme.appLayoutInfo
+import com.novaplay.tv.core.TimeFormatPolicy
+import com.novaplay.tv.ui.theme.LocalUse24Hour
 import com.novaplay.tv.ui.theme.isTvDevice
 import com.novaplay.tv.ui.theme.screenPadding
 import kotlinx.coroutines.delay
@@ -783,7 +785,7 @@ private fun HomeCardItem(
     }
 }
 
-/** HH:mm clock that refreshes every 10 s while the screen is composed. */
+/** Clock that refreshes every 10 s, honoring the 12/24-hour setting. */
 @Composable
 private fun Clock() {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
@@ -793,7 +795,10 @@ private fun Clock() {
             delay(10_000)
         }
     }
-    val format = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val use24 = LocalUse24Hour.current
+    val format = remember(use24) {
+        SimpleDateFormat(TimeFormatPolicy.timePattern(use24), Locale.getDefault())
+    }
     Text(
         text = format.format(Date(now)),
         style = MaterialTheme.typography.labelLarge,

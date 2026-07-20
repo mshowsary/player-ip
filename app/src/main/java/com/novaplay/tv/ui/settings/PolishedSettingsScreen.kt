@@ -67,6 +67,7 @@ import com.novaplay.tv.data.prefs.SubtitleColor
 import com.novaplay.tv.data.prefs.SubtitleEdge
 import com.novaplay.tv.data.prefs.SubtitleSize
 import com.novaplay.tv.data.prefs.SubtitleStyle
+import com.novaplay.tv.data.prefs.TimeFormatPreference
 import com.novaplay.tv.data.prefs.UiModePreference
 import com.novaplay.tv.data.repo.DebugManagedPolicyPreset
 import com.novaplay.tv.data.repo.ManagedAccessPolicy
@@ -93,6 +94,8 @@ fun PolishedSettingsScreen(
     val uiMode by viewModel.uiMode.collectAsStateWithLifecycle()
     val homeLayout by viewModel.homeLayout.collectAsStateWithLifecycle()
     val accentTheme by viewModel.accentTheme.collectAsStateWithLifecycle()
+    val timeFormat by viewModel.timeFormat.collectAsStateWithLifecycle()
+    val historyCleared by viewModel.historyCleared.collectAsStateWithLifecycle()
     val subtitleStyle by viewModel.subtitleStyle.collectAsStateWithLifecycle()
     val liveFormat by viewModel.liveFormat.collectAsStateWithLifecycle()
     val playerGestures by viewModel.playerGesturesEnabled.collectAsStateWithLifecycle()
@@ -140,7 +143,7 @@ fun PolishedSettingsScreen(
                 contentPadding = PaddingValues(bottom = 32.dp),
                 modifier = Modifier.weight(1f),
             ) {
-                item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
+                item { InterfacePanel(uiMode, homeLayout, accentTheme, timeFormat, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme, viewModel::setTimeFormat) }
                 if (!BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
                     // Provider-managed brands only; self-service builds show
                     // their trial/license state in This device instead.
@@ -176,8 +179,10 @@ fun PolishedSettingsScreen(
                     MaintenancePanel(
                         syncStatus,
                         cacheCleared,
+                        historyCleared,
                         viewModel::resyncNow,
                         viewModel::clearImageCache,
+                        viewModel::clearViewingHistory,
                     )
                 }
                 item {
@@ -208,7 +213,7 @@ fun PolishedSettingsScreen(
                         .weight(1f)
                         .fillMaxHeight(),
                 ) {
-                    item { InterfacePanel(uiMode, homeLayout, accentTheme, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme) }
+                    item { InterfacePanel(uiMode, homeLayout, accentTheme, timeFormat, firstFocus, viewModel::setUiMode, viewModel::setHomeLayout, viewModel::setAccentTheme, viewModel::setTimeFormat) }
                     if (!BuildConfig.ALLOW_PERSONAL_PLAYLISTS) {
                         // Provider-managed brands only; self-service builds show
                         // their trial/license state in This device instead.
@@ -234,8 +239,10 @@ fun PolishedSettingsScreen(
                         MaintenancePanel(
                             syncStatus,
                             cacheCleared,
+                            historyCleared,
                             viewModel::resyncNow,
                             viewModel::clearImageCache,
+                            viewModel::clearViewingHistory,
                         )
                     }
                     item {
@@ -381,10 +388,12 @@ private fun InterfacePanel(
     mode: UiModePreference,
     homeLayout: HomeLayout,
     accentTheme: AccentTheme,
+    timeFormat: TimeFormatPreference,
     firstFocus: FocusRequester,
     onSelect: (UiModePreference) -> Unit,
     onSelectHomeLayout: (HomeLayout) -> Unit,
     onSelectAccentTheme: (AccentTheme) -> Unit,
+    onSelectTimeFormat: (TimeFormatPreference) -> Unit,
 ) {
     SettingsPanel(
         title = "Interface",
@@ -427,6 +436,13 @@ private fun InterfacePanel(
             options = AccentTheme.entries.map { it.label },
             selectedIndex = accentTheme.ordinal,
             onSelect = { onSelectAccentTheme(AccentTheme.entries[it]) },
+        )
+        // Clocks and programme times; Auto follows the Android system setting.
+        ChoiceGroup(
+            label = "Time format",
+            options = TimeFormatPreference.entries.map { it.label },
+            selectedIndex = timeFormat.ordinal,
+            onSelect = { onSelectTimeFormat(TimeFormatPreference.entries[it]) },
         )
     }
 }
@@ -571,8 +587,10 @@ private fun PlaybackPanel(
 private fun MaintenancePanel(
     status: SyncStatus,
     cacheCleared: Boolean,
+    historyCleared: Boolean,
     onSync: () -> Unit,
     onClearCache: () -> Unit,
+    onClearHistory: () -> Unit,
 ) {
     SettingsPanel(
         title = "Storage and synchronization",
@@ -597,6 +615,13 @@ private fun MaintenancePanel(
         NovaButton(
             text = if (cacheCleared) "Image cache cleared âœ“" else "Clear image cache",
             onClick = onClearCache,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        // Empties the Recently-viewed rows everywhere; bookmarks and resume
+        // positions survive.
+        NovaButton(
+            text = if (historyCleared) "Viewing history cleared" else "Clear viewing history",
+            onClick = onClearHistory,
             modifier = Modifier.fillMaxWidth(),
         )
     }

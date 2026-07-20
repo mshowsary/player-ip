@@ -397,6 +397,12 @@ class ContentRepository @Inject constructor(
         db.recentViewDao().trim(playlistId, mediaType, RECENTS_KEPT)
     }
 
+    /** Clears the Recently-viewed history of one playlist (all three types).
+     * Bookmarks and resume positions are deliberately untouched. */
+    suspend fun clearRecents(playlistId: Long) {
+        db.recentViewDao().wipeForPlaylist(playlistId)
+    }
+
     // ---- Watch progress ----
 
     // The route still carries a local row id, but DAO joins immediately resolve
