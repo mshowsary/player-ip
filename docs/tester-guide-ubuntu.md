@@ -84,8 +84,11 @@ now"** on the box → channels should appear within seconds, then:
 4. **Home (Hero layout)**: big Live TV panel + Movies/Series/Playlists/
    Settings cards + rails. All names must show fully. Try Classic in
    Settings → Interface, try the accent colors.
-5. **Live playback**: zap with the remote (CH+/- and numbers), open the
-   in-player channel list, search in it, bookmark a channel.
+5. **Live playback**: the overlay now shows the remote map at the bottom.
+   Zap with CH+/- / arrows and numbers; press LEFT for the in-player
+   channel list (search box on top); **hold OK to bookmark** the playing
+   channel (a badge appears next to the name); RIGHT cycles zoom; 0
+   returns to the previous channel.
 6. **Settings → This device**: MAC, Device Key and "Player license:
    Free trial — N day(s) left" should all show.
 7. **Parental control**: in Live, open the categories and **hold OK** on

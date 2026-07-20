@@ -232,7 +232,8 @@ class LivePlayerViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
-    /** Adds or removes the playing channel from bookmarks. */
+    /** Adds or removes the playing channel from bookmarks; the overlay
+     * (re)appears so the badge change is visible feedback. */
     fun toggleBookmark() {
         val channel = _uiState.value.channel ?: return
         viewModelScope.launch {
@@ -242,6 +243,7 @@ class LivePlayerViewModel @Inject constructor(
                 remoteId = channel.streamId,
             )
         }
+        showOverlay()
     }
 
     /** Plays a channel picked from the panel; picking the current one just closes it. */
