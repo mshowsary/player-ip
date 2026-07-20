@@ -136,6 +136,10 @@ fun LivePlayerScreen(
     // First-time gesture demo on touch: three chips over the zones for a few
     // seconds, then never again (any tap also dismisses it).
     var hintVisible by remember { mutableStateOf(false) }
+    // When the OK key went down; its release decides between overlay toggle
+    // (short press) and bookmark (held ≥ 600 ms). 0 = not currently down.
+    var okDownAtMs by remember { mutableStateOf(0L) }
+    val okHoldBookmarkMs = 600L
     LaunchedEffect(gestureHintPending, isTv) {
         if (gestureHintPending && !isTv) {
             hintVisible = true
@@ -216,17 +220,41 @@ fun LivePlayerScreen(
             .focusable()
             .onPreviewKeyEvent { event ->
                 if (state.error != null) return@onPreviewKeyEvent false
-                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 // While the picker is open, only LEFT closes it; everything else
                 // (UP/DOWN/OK) drives the panel's own focus navigation.
                 if (channelListVisible) {
-                    return@onPreviewKeyEvent if (event.key == Key.DirectionLeft) {
+                    return@onPreviewKeyEvent if (
+                        event.key == Key.DirectionLeft && event.type == KeyEventType.KeyDown
+                    ) {
                         viewModel.closeChannelList()
                         true
                     } else {
                         false
                     }
                 }
+                // OK acts on release so HOLDING it can bookmark the playing
+                // channel — the same long-press-OK habit as the rest of the app.
+                if (event.key == Key.DirectionCenter || event.key == Key.Enter) {
+                    when (event.type) {
+                        KeyEventType.KeyDown -> {
+                            // Key-repeat re-sends KeyDown while held; only the
+                            // first press starts the hold clock.
+                            if (okDownAtMs == 0L) okDownAtMs = System.currentTimeMillis()
+                        }
+                        KeyEventType.KeyUp -> {
+                            val heldMs = System.currentTimeMillis() - okDownAtMs
+                            okDownAtMs = 0L
+                            if (heldMs >= okHoldBookmarkMs) {
+                                viewModel.toggleBookmark()
+                            } else {
+                                viewModel.toggleOverlay()
+                            }
+                        }
+                        else -> Unit
+                    }
+                    return@onPreviewKeyEvent true
+                }
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                 val digit = event.key.liveDigitOrNull()
                 if (digit != null) {
                     viewModel.onDigit(digit)
@@ -252,10 +280,6 @@ fun LivePlayerScreen(
                     }
                     Key.DirectionRight -> {
                         viewModel.cycleVideoScale()
-                        true
-                    }
-                    Key.DirectionCenter, Key.Enter -> {
-                        viewModel.toggleOverlay()
                         true
                     }
                     else -> false
@@ -361,6 +385,7 @@ fun LivePlayerScreen(
                 onToggleBookmark = viewModel::toggleBookmark.takeUnless { isTv },
                 onCycleScale = viewModel::cycleVideoScale.takeUnless { isTv },
                 onToggleGestures = viewModel::togglePlayerGestures.takeUnless { isTv },
+                showRemoteHints = isTv,
             )
         }
 
@@ -479,6 +504,7 @@ private fun ChannelInfoBar(
     onToggleBookmark: (() -> Unit)? = null,
     onCycleScale: (() -> Unit)? = null,
     onToggleGestures: (() -> Unit)? = null,
+    showRemoteHints: Boolean = false,
 ) {
     // Narrow (portrait phone) windows can't fit the info and five buttons on
     // one line — the action row moves under the text so nothing gets clipped.
@@ -514,11 +540,25 @@ private fun ChannelInfoBar(
             )
             Spacer(Modifier.width(24.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = name,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // On TV the buttons stay off-screen (remote-driven), so the
+                    // bookmark state itself shows as a badge next to the name.
+                    if (bookmarked && onToggleBookmark == null) {
+                        Spacer(Modifier.width(10.dp))
+                        Icon(
+                            imageVector = Icons.Default.Bookmark,
+                            contentDescription = stringResource(R.string.action_remove_bookmark),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
                 categoryName?.let {
                     Spacer(Modifier.height(2.dp))
                     Text(
@@ -585,6 +625,16 @@ private fun ChannelInfoBar(
                     onZapPrev = onZapPrev,
                 )
             }
+        }
+        if (showRemoteHints) {
+            // The remote map, so nothing the player can do stays a secret.
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = "◀ Channel list · ▲▼ Zap · 123 Go to channel · 0 Last channel · " +
+                    "Hold OK Bookmark · ▶ Zoom",
+                style = MaterialTheme.typography.labelMedium,
+                color = Color.White.copy(alpha = 0.65f),
+            )
         }
         }
     }
