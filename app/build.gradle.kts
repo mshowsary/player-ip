@@ -81,6 +81,14 @@ val configuredUpdateUrl = providers.gradleProperty("novaplayUpdateUrl")
     .orElse(brandValue("brand.updateUrl") ?: "")
     .get()
     .trim()
+// Optional pinned update-signing public key (RSA, base64 of the X.509/DER
+// encoding, one line). When present, the app refuses unsigned or tampered
+// update manifests. Generate the pair with tools/sign_update_manifest.py.
+val configuredUpdatePublicKey = providers.gradleProperty("novaplayUpdatePublicKey")
+    .orElse(providers.environmentVariable("NOVAPLAY_UPDATE_PUBLIC_KEY"))
+    .orElse(brandValue("brand.updatePublicKey") ?: "")
+    .get()
+    .trim()
 if (configuredUpdateUrl.isNotEmpty()) {
     val updateUri = runCatching { URI(configuredUpdateUrl) }.getOrNull()
     require(
@@ -189,6 +197,7 @@ android {
         buildConfigField("String", "BRAND_ACCENT_ALT", brandAccentAlt.asBuildConfigString())
         buildConfigField("boolean", "ALLOW_PERSONAL_PLAYLISTS", brandAllowPersonal.toString())
         buildConfigField("String", "UPDATE_MANIFEST_URL", configuredUpdateUrl.asBuildConfigString())
+        buildConfigField("String", "UPDATE_PUBLIC_KEY", configuredUpdatePublicKey.asBuildConfigString())
         buildConfigField("String", "PORTAL_BASE_URL", configuredPortalBaseUrl.asBuildConfigString())
         buildConfigField("boolean", "PORTAL_CONFIGURED", portalConfigured.toString())
     }
